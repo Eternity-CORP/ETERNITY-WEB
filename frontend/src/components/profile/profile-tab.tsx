@@ -7,6 +7,9 @@ import TransactionHistory from '@/components/author/transaction-history';
 import CollectionCard from '@/components/ui/collection-card';
 import { useLayout } from '@/lib/hooks/use-layout';
 import { LAYOUT_OPTIONS } from '@/lib/constants';
+import { useAccount, useBalance } from 'wagmi'
+import { useEffect, useState } from 'react'
+import axios from 'axios'
 // static data
 import { collections } from '@/data/static/collections';
 import {
@@ -32,6 +35,12 @@ const tabMenu = [
 ];
 
 export default function ProfileTab() {
+
+  const { address, isConnecting, isDisconnected } = useAccount()
+  const { data: balance, isLoading } = useBalance({
+    address: address,
+  })
+
   const { layout } = useLayout();
   return (
     <Suspense fallback={<Loader variant="blink" />}>
@@ -63,6 +72,7 @@ export default function ProfileTab() {
                   variant="medium"
                 />
               ))}
+              Balance: {balance?.formatted} ETH
             </div>
             <div className="block">
               <h3 className="text-heading-style mb-3 uppercase text-gray-900 dark:text-white">
