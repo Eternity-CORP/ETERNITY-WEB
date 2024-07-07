@@ -19,6 +19,11 @@ export const defaultMenuItems = [
     href: routes.home,
   },
   {
+    name: 'Chat',
+    icon: <ExchangeIcon />,
+    href: routes.chat,
+  },
+  {
     name: 'Live Pricing',
     icon: <LivePricing />,
     href: routes.livePricing,
@@ -119,6 +124,11 @@ export const MinimalMenuItems = [
     name: 'Home',
     icon: <HomeIcon />,
     href: routes.home,
+  },
+  {
+    name: 'Chat',
+    icon: <ExchangeIcon />,
+    href: routes.chat,
   },
   {
     name: 'Live Pricing',

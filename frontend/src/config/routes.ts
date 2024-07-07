@@ -1,6 +1,7 @@
 const routes = {
   home: '/',
   notWallet: 'not-wallet',
+  chat: '/chat',
   minimal: '/minimal',
   livePricing: '/live-pricing',
   retro: '/retro',
