@@ -1,4 +1,4 @@
-'use client';
+'use client'
 
 import { useState } from 'react';
 import { Transition } from '@/components/ui/transition';
@@ -40,12 +40,81 @@ const BlockchainOptions = [
   },
 ];
 
+interface NFT {
+  readonly id: number; // Make id readonly
+  file: File | null;
+  price: string;
+  name: string;
+  externalLink: string;
+  description: string;
+  unlockableContent: string;
+  blockchain: string;
+  priceType: string;
+}
+
+
+
 export default function CreateNFT() {
-  let [publish, setPublish] = useState(true);
-  let [explicit, setExplicit] = useState(false);
-  let [unlocked, setUnlocked] = useState(false);
-  let [priceType, setPriceType] = useState('fixed');
-  let [blockchain, setBlockChain] = useState(BlockchainOptions[0]);
+  const [publish, setPublish] = useState(true);
+  const [explicit, setExplicit] = useState(false);
+  const [unlocked, setUnlocked] = useState(false);
+  const [priceType, setPriceType] = useState('fixed');
+  const [blockchain, setBlockChain] = useState(BlockchainOptions[0]);
+  const [nfts, setNfts] = useState<NFT[]>([]);
+  const initialFormData: NFT = {
+    blockchain: 'ethereum',
+    priceType: 'fixed',
+    file: null,
+    price: '',
+    name: '',
+    externalLink: '',
+    description: '',
+    unlockableContent: '',
+    id: 0,
+  };
+  
+  const [formData, setFormData] = useState<NFT>(initialFormData);
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target;
+    setFormData({ ...formData, [name]: value });
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData({ ...formData, file: e.target.files ? e.target.files[0] : null });
+  };
+
+  const handleCreateNFT = () => {
+    // Generate a unique ID for the new NFT
+    const newNFT: NFT = {
+      id: Date.now(), // Unique ID (consider better ID generation in production)
+      file: formData.file,
+      price: formData.price,
+      name: formData.name,
+      externalLink: formData.externalLink,
+      description: formData.description,
+      unlockableContent: formData.unlockableContent,
+      blockchain: blockchain.name,
+      priceType,
+    };
+  
+    // Update the state with the new NFT
+    setNfts((prevNfts) => [...prevNfts, newNFT]);
+  
+    // Clear the form data
+    setFormData({
+      id: 0,
+      file: null,
+      price: '',
+      name: '',
+      externalLink: '',
+      description: '',
+      unlockableContent: '',
+      blockchain: '', // Reset to default blockchain option
+      priceType: 'fixed', // Reset to default price type
+    });
+  };
+
   return (
     <>
       <div className="mx-auto w-full sm:pt-0 lg:px-8 xl:px-10 2xl:px-0">
@@ -62,8 +131,7 @@ export default function CreateNFT() {
           <div className="lg:col-span-2">
             <div className="mb-8">
               <InputLabel title="Upload file" important />
-
-              <FileInput multiple />
+              <FileInput onChange={handleFileChange} accept=".jpg,.png,.jpeg" />
             </div>
 
             <div className="flex items-center justify-between gap-4">
@@ -133,17 +201,26 @@ export default function CreateNFT() {
         <div className="mb-8">
           <InputLabel title="Price" important />
           <Input
+            name="price"
             min={0}
             type="number"
             placeholder="Enter your price"
             inputClassName="spin-button-hidden"
+            value={formData.price}
+            onChange={handleInputChange}
           />
         </div>
 
         {/* Name */}
         <div className="mb-8">
           <InputLabel title="Name" important />
-          <Input type="text" placeholder="Item name" />
+          <Input
+            name="name"
+            type="text"
+            placeholder="Item name"
+            value={formData.name}
+            onChange={handleInputChange}
+          />
         </div>
 
         {/* External link */}
@@ -152,7 +229,13 @@ export default function CreateNFT() {
             title="External link"
             subTitle="We will include a link to this URL on this item's detail page, so that users can click to learn more about it."
           />
-          <Input type="text" placeholder="https://yoursite.io/item/123" />
+          <Input
+            name="externalLink"
+            type="text"
+            placeholder="https://yoursite.io/item/123"
+            value={formData.externalLink}
+            onChange={handleInputChange}
+          />
         </div>
 
         {/* Description */}
@@ -161,7 +244,12 @@ export default function CreateNFT() {
             title="Description"
             subTitle="The description will be included on the item's detail page underneath its image."
           />
-          <Textarea placeholder="Provide a detailed description of your item" />
+          <Textarea
+            name="description"
+            placeholder="Provide a detailed description of your item"
+            value={formData.description}
+            onChange={handleInputChange}
+          />
         </div>
 
         {/* Unlockable content */}
@@ -174,7 +262,12 @@ export default function CreateNFT() {
             onChange={() => setUnlocked(!unlocked)}
           >
             {unlocked && (
-              <Textarea placeholder="Enter content (access key, code to redeem, link to a file, etc.)" />
+              <Textarea
+                name="unlockableContent"
+                placeholder="Enter content (access key, code to redeem, link to a file, etc.)"
+                value={formData.unlockableContent}
+                onChange={handleInputChange}
+              />
             )}
           </ToggleBar>
         </div>
@@ -182,7 +275,7 @@ export default function CreateNFT() {
         {/* Explicit content */}
         <div className="mb-8">
           <ToggleBar
-            title="Explicit &amp; Sensitive Content"
+            title="Explicit & Sensitive Content"
             subTitle="Set this item as explicit and sensitive content"
             icon={<Warning />}
             checked={explicit}
@@ -241,7 +334,24 @@ export default function CreateNFT() {
           </div>
         </div>
 
-        <Button shape="rounded">CREATE</Button>
+        <Button shape="rounded" onClick={handleCreateNFT}>CREATE</Button>
+
+        {/* Display created NFTs */}
+        <div className="mt-10">
+          <h3 className="text-xl font-medium">Created NFTs</h3>
+          <ul>
+            {nfts.map((nft) => (
+              <li key={nft.id} className="mt-4">
+                <p><strong>Name:</strong> {nft.name}</p>
+                <p><strong>Price:</strong> {nft.price}</p>
+                <p><strong>Description:</strong> {nft.description}</p>
+                <p><strong>Blockchain:</strong> {nft.blockchain}</p>
+                <p><strong>ID:</strong> {nft.id}</p>
+                {/* Add more NFT details as needed */}
+              </li>
+            ))}
+          </ul>
+        </div>
       </div>
     </>
   );
