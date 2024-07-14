@@ -34,12 +34,75 @@ const BlockchainOptions = [
   },
 ];
 
+interface NFT {
+  readonly id: number;
+  file: File | null;
+  price: string;
+  name: string;
+  externalLink: string;
+  description: string;
+  unlockableContent: string;
+  blockchain: string;
+  priceType: string;
+}
+
 export default function CreateNFTRetro() {
   const [publish, setPublish] = useState(true);
   const [explicit, setExplicit] = useState(false);
   const [unlocked, setUnlocked] = useState(false);
   const [priceType, setPriceType] = useState('fixed');
   const [blockchain, setBlockChain] = useState(BlockchainOptions[0]);
+  const [nfts, setNfts] = useState<NFT[]>([]);
+  const initialFormData: NFT = {
+    blockchain: 'ethereum',
+    priceType: 'fixed',
+    file: null,
+    price: '',
+    name: '',
+    externalLink: '',
+    description: '',
+    unlockableContent: '',
+    id: 0,
+  };
+
+  const [formData, setFormData] = useState<NFT>(initialFormData);
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target;
+    setFormData({ ...formData, [name]: value });
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData({ ...formData, file: e.target.files ? e.target.files[0] : null });
+  };
+
+  const handleCreateNFT = () => {
+    const newNFT: NFT = {
+      id: Date.now(),
+      file: formData.file,
+      price: formData.price,
+      name: formData.name,
+      externalLink: formData.externalLink,
+      description: formData.description,
+      unlockableContent: formData.unlockableContent,
+      blockchain: blockchain.name,
+      priceType,
+    };
+
+    setNfts((prevNfts) => [...prevNfts, newNFT]);
+
+    setFormData({
+      id: 0,
+      file: null,
+      price: '',
+      name: '',
+      externalLink: '',
+      description: '',
+      unlockableContent: '',
+      blockchain: 'ethereum',
+      priceType: 'fixed',
+    });
+  };
 
   return (
     <>
@@ -55,7 +118,7 @@ export default function CreateNFTRetro() {
           <div className="relative">
             <div className="mb-8">
               <InputLabel title="Upload file" important />
-              <FileInput multiple />
+              <FileInput multiple onChange={handleFileChange} />
             </div>
 
             <div className="flex items-center justify-between gap-4">
@@ -95,13 +158,22 @@ export default function CreateNFTRetro() {
             type="number"
             placeholder="Enter your price"
             inputClassName="spin-button-hidden"
+            name="price"
+            value={formData.price}
+            onChange={handleInputChange}
           />
         </div>
 
         {/* Name */}
         <div className="mb-8">
           <InputLabel title="Name" important />
-          <Input type="text" placeholder="Item name" />
+          <Input
+            type="text"
+            placeholder="Item name"
+            name="name"
+            value={formData.name}
+            onChange={handleInputChange}
+          />
         </div>
 
         {/* External link */}
@@ -110,7 +182,13 @@ export default function CreateNFTRetro() {
             title="External link"
             subTitle="We will include a link to this URL on this item's detail page, so that users can click to learn more about it."
           />
-          <Input type="text" placeholder="https://yoursite.io/item/123" />
+          <Input
+            type="text"
+            placeholder="https://yoursite.io/item/123"
+            name="externalLink"
+            value={formData.externalLink}
+            onChange={handleInputChange}
+          />
         </div>
 
         {/* Description */}
@@ -119,7 +197,12 @@ export default function CreateNFTRetro() {
             title="Description"
             subTitle="The description will be included on the item's detail page underneath its image."
           />
-          <Textarea placeholder="Provide a detailed description of your item" />
+          <Textarea
+            placeholder="Provide a detailed description of your item"
+            name="description"
+            value={formData.description}
+            onChange={handleInputChange}
+          />
         </div>
 
         {/* Unlockable content */}
@@ -132,7 +215,12 @@ export default function CreateNFTRetro() {
             onChange={() => setUnlocked(!unlocked)}
           >
             {unlocked && (
-              <Textarea placeholder="Enter content (access key, code to redeem, link to a file, etc.)" />
+              <Textarea
+                placeholder="Enter content (access key, code to redeem, link to a file, etc.)"
+                name="unlockableContent"
+                value={formData.unlockableContent}
+                onChange={handleInputChange}
+              />
             )}
           </ToggleBar>
         </div>
@@ -199,7 +287,27 @@ export default function CreateNFTRetro() {
           </div>
         </div>
 
-        <Button shape="rounded">CREATE</Button>
+        <Button shape="rounded" onClick={handleCreateNFT}>CREATE</Button>
+
+        {/* Display created NFTs */}
+        <div className="mt-10">
+          <ul>
+            {nfts.map((nft) => (
+              <li key={nft.id} className="mt-4">
+                <p><strong>File:</strong> {nft.file}</p>
+                <p><strong>Type:</strong> {nft.priceType}</p>
+                <p><strong>Price:</strong> {nft.price}</p>
+                <p><strong>Name:</strong> {nft.name}</p>
+                <p><strong>Link:</strong> {nft.externalLink}</p>
+                <p><strong>Description:</strong> {nft.description}</p>
+                <p><strong>Price:</strong> {nft.unlockableContent}</p>
+                <p><strong>Blockchain:</strong> {nft.blockchain}</p>
+                <p><strong>ID:</strong> {nft.id}</p>
+                {/* Add more NFT details as needed */}
+              </li>
+            ))}
+          </ul>
+        </div>
       </div>
     </>
   );

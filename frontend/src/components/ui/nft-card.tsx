@@ -1,5 +1,4 @@
-'use client';
-
+// components/NFTGrid.tsx
 import Image from '@/components/ui/image';
 import AnchorLink from '@/components/ui/links/anchor-link';
 import { Verified } from '@/components/icons/verified';
@@ -9,14 +8,18 @@ import { useLayout } from '@/lib/hooks/use-layout';
 import { LAYOUT_OPTIONS } from '@/lib/constants';
 import routes from '@/config/routes';
 
-type NFTGridProps = {
+interface NFTGridProps {
   author: string;
   authorImage: StaticImageData;
   image: StaticImageData;
   name: string;
   collection: string;
   price: string;
-};
+  externalLink: string;
+  description: string;
+  unlockableContent: string;
+  blockchain: string;
+}
 
 export default function NFTGrid({
   author,
@@ -25,6 +28,10 @@ export default function NFTGrid({
   name,
   collection,
   price,
+  externalLink,
+  description,
+  unlockableContent,
+  blockchain,
 }: NFTGridProps) {
   const { layout } = useLayout();
 
@@ -88,6 +95,20 @@ export default function NFTGrid({
         </div>
         <div className="mt-4 text-lg font-medium text-gray-900 dark:text-white">
           {price}
+        </div>
+        <div>
+          <p>
+            <strong>External Link:</strong> {externalLink}
+          </p>
+          <p>
+            <strong>Description:</strong> {description}
+          </p>
+          <p>
+            <strong>Unlockable Content:</strong> {unlockableContent}
+          </p>
+          <p>
+            <strong>Blockchain:</strong> {blockchain}
+          </p>
         </div>
       </div>
     </div>

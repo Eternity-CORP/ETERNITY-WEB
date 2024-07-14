@@ -338,13 +338,16 @@ export default function CreateNFT() {
 
         {/* Display created NFTs */}
         <div className="mt-10">
-          <h3 className="text-xl font-medium">Created NFTs</h3>
           <ul>
             {nfts.map((nft) => (
               <li key={nft.id} className="mt-4">
-                <p><strong>Name:</strong> {nft.name}</p>
+                <p><strong>File:</strong> {nft.file}</p>
+                <p><strong>Type:</strong> {nft.priceType}</p>
                 <p><strong>Price:</strong> {nft.price}</p>
+                <p><strong>Name:</strong> {nft.name}</p>
+                <p><strong>Link:</strong> {nft.externalLink}</p>
                 <p><strong>Description:</strong> {nft.description}</p>
+                <p><strong>Price:</strong> {nft.unlockableContent}</p>
                 <p><strong>Blockchain:</strong> {nft.blockchain}</p>
                 <p><strong>ID:</strong> {nft.id}</p>
                 {/* Add more NFT details as needed */}
