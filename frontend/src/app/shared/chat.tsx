@@ -2,67 +2,138 @@
 
 import { useState } from 'react';
 import Button from '@/components/ui/button';
-import CoinInput from '@/components/ui/coin-input';
-import TransactionInfo from '@/components/ui/transaction-info';
-import { SwapIcon } from '@/components/icons/swap-icon';
-import Trade from '@/components/ui/trade';
 import cn from '@/utils/cn';
+import { PlusCircleOutlined, PaperClipOutlined } from '@ant-design/icons';
+
+// Пример контактов с аватарами
+const contacts = [
+  { id: 1, name: 'Alice', avatar: '/avatars/alice.png' },
+  { id: 2, name: 'Bob', avatar: '/avatars/bob.png' },
+  { id: 3, name: 'Charlie', avatar: '/avatars/charlie.png' },
+];
 
 const ChatPage = () => {
-  let [toggleCoin, setToggleCoin] = useState(false);
+  const [contactList, setContactList] = useState(contacts);
+  const [selectedContact, setSelectedContact] = useState(contactList[0]);
+  const [newContactAddress, setNewContactAddress] = useState('');
+  const [showInput, setShowInput] = useState(false);
+  const [sidebarWidth, setSidebarWidth] = useState(300);
+  const [resizing, setResizing] = useState(false);
+
+  const addNewContact = () => {
+    if (newContactAddress) {
+      const newContact = {
+        id: contactList.length + 1,
+        name: newContactAddress,
+        avatar: '/avatars/default.png', // Путь к изображению по умолчанию
+      };
+      setContactList([...contactList, newContact]);
+      setNewContactAddress('');
+      setShowInput(false);
+    }
+  };
+
+  const handleMouseDown = () => {
+    setResizing(true);
+  };
+
+  const handleMouseMove = (e: any) => {
+    if (resizing) {
+      setSidebarWidth(e.clientX);
+    }
+  };
+
+  const handleMouseUp = () => {
+    setResizing(false);
+  };
+
   return (
-    <>
-      <Trade>
-        <div className="mb-5 border-b border-dashed border-gray-200 pb-5 dark:border-gray-800 xs:mb-7 xs:pb-6">
-          <div
-            className={cn(
-              'relative flex gap-3',
-              toggleCoin ? 'flex-col-reverse' : 'flex-col',
-            )}
+    <div className="h-screen overflow-hidden flex" onMouseMove={handleMouseMove} onMouseUp={handleMouseUp}>
+      {/* Left column: Contacts list */}
+      <div
+        className="flex flex-col h-full border-r border-gray-200 dark:border-gray-800"
+        style={{ width: sidebarWidth }}
+      >
+        <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-800">
+          <h2 className="text-lg font-semibold">Contacts</h2>
+          <button
+            className="p-1 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700"
+            onClick={() => setShowInput(!showInput)}
           >
-            <CoinInput
-              label={'From'}
-              exchangeRate={0.0}
-              defaultCoinIndex={0}
-              getCoinValue={(data) => console.log('From coin value:', data)}
+            <PlusCircleOutlined />
+          </button>
+        </div>
+        {showInput && (
+          <div className="p-4">
+            <input
+              type="text"
+              className="w-full p-2 mb-2 border border-gray-200 dark:border-gray-800 rounded"
+              placeholder="Enter wallet address..."
+              value={newContactAddress}
+              onChange={(e) => setNewContactAddress(e.target.value)}
             />
-            <div className="absolute left-1/2 top-1/2 z-[1] -ml-4 -mt-4 rounded-full bg-white shadow-large dark:bg-gray-600">
-              <Button
-                size="mini"
-                color="gray"
-                shape="circle"
-                variant="transparent"
-                onClick={() => setToggleCoin(!toggleCoin)}
-              >
-                <SwapIcon className="h-auto w-3" />
-              </Button>
+            <Button onClick={addNewContact} className="w-full">
+              Add Contact
+            </Button>
+          </div>
+        )}
+        <ul className="flex-1 overflow-y-auto p-4">
+          {contactList.map((contact) => (
+            <li
+              key={contact.id}
+              className={cn(
+                'flex items-center p-2 mb-2 rounded cursor-pointer',
+                selectedContact.id === contact.id
+                  ? 'bg-gray-200 dark:bg-gray-700'
+                  : 'hover:bg-gray-100 dark:hover:bg-gray-600'
+              )}
+              onClick={() => setSelectedContact(contact)}
+            >
+              <img
+                src={contact.avatar}
+                alt={`${contact.name}'s avatar`}
+                className="w-8 h-8 rounded-full mr-2"
+              />
+              {contact.name}
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <div
+        className="w-1 bg-gray-200 cursor-col-resize"
+        onMouseDown={handleMouseDown}
+      ></div>
+
+      {/* Right column: Chat window */}
+      <div className="flex-1 flex flex-col h-full">
+        <div className="flex-1 overflow-y-auto p-4 border-b border-gray-200 dark:border-gray-800">
+          <h2 className="text-lg font-semibold mb-4">
+            Chat with {selectedContact.name}
+          </h2>
+          {/* Example messages */}
+          <div className="mb-4">
+            <div className="p-2 mb-2 bg-gray-100 dark:bg-gray-700 rounded">
+              Hello, how are you?
             </div>
-            <CoinInput
-              label={'To'}
-              exchangeRate={0.0}
-              defaultCoinIndex={1}
-              getCoinValue={(data) => console.log('To coin value:', data)}
-            />
+            <div className="p-2 mb-2 bg-blue-100 dark:bg-blue-700 rounded self-end">
+              I'm fine, thanks!
+            </div>
           </div>
         </div>
-        <div className="flex flex-col gap-4 xs:gap-[18px]">
-          <TransactionInfo label={'Min. Received'} />
-          <TransactionInfo label={'Rate'} />
-          <TransactionInfo label={'Offered by'} />
-          <TransactionInfo label={'Price Slippage'} value={'1%'} />
-          <TransactionInfo label={'Network Fee'} />
-          <TransactionInfo label={'Criptic Fee'} />
+
+        {/* Message input */}
+        <div className="p-4 flex items-center">
+          <PaperClipOutlined className="mr-2" />
+          <input
+            type="text"
+            className="flex-1 p-2 border border-gray-200 dark:border-gray-800 rounded"
+            placeholder="Type your message here..."
+          />
+          <Button className="ml-2">Send</Button>
         </div>
-        <Button
-          size="large"
-          shape="rounded"
-          fullWidth={true}
-          className="mt-6 uppercase xs:mt-8 xs:tracking-widest"
-        >
-          CHAT
-        </Button>
-      </Trade>
-    </>
+      </div>
+    </div>
   );
 };
 
