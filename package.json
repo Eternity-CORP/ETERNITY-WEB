@@ -1,6 +1,7 @@
 {
 	"dependencies": {
 		"@ant-design/icons": "^5.3.7",
+		"ethereum-blockies": "^0.1.1",
 		"react-split-pane": "^0.1.92"
 	}
 }
