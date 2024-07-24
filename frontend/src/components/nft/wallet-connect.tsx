@@ -9,6 +9,7 @@ import { Transition } from '@/components/ui/transition';
 import ActiveLink from '@/components/ui/links/active-link';
 import { ChevronForward } from '@/components/icons/chevron-forward';
 import { PowerIcon } from '@/components/icons/power';
+import { EditFilled } from '@ant-design/icons';
 
 export default function WalletConnect({
   btnClassName,
@@ -40,7 +41,7 @@ export default function WalletConnect({
                 leaveFrom="opacity-100 translate-y-0"
                 leaveTo="opacity-0 translate-y-4"
               >
-                <Menu.Items className="absolute -right-20 mt-3 w-72 origin-top-right rounded-lg bg-white shadow-large dark:bg-gray-900 sm:-right-14">
+                <Menu.Items className="absolute -right-20 mt-3 w-96 origin-top-right rounded-lg bg-white shadow-large dark:bg-gray-900 sm:-right-14">
                   <Menu.Item>
                     <div className="border-b border-dashed border-gray-200 p-3 dark:border-gray-700">
                       <ActiveLink
@@ -56,23 +57,37 @@ export default function WalletConnect({
                     </div>
                   </Menu.Item>
                   <Menu.Item>
-                    <Menu.Item>
-                      <div className="border-b border-dashed border-gray-200 px-6 py-5 dark:border-gray-700">
-                        <div className="flex items-center justify-between gap-3">
-                          <span className="text-sm font-medium -tracking-tighter text-gray-600 dark:text-gray-400">
-                            Balance
-                          </span>
-                          <span className="rounded-lg bg-gray-100 px-2 py-1 text-sm tracking-tighter dark:bg-gray-800">
-                            {address.slice(0, 6)}
-                            {'...'}
-                            {address.slice(address.length - 6)}
-                          </span>
-                        </div>
-                        <div className="mt-3 font-medium uppercase tracking-wider text-gray-900 dark:text-white">
-                          {balance} ETH
-                        </div>
+                    <div className="border-b border-dashed border-gray-200 px-6 py-5 dark:border-gray-700">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-sm font-medium -tracking-tighter text-gray-600 dark:text-gray-400">
+                          Username
+                        </span>
+                        <span className="rounded-lg bg-gray-100 px-14 py-2 text-sm tracking-tighter dark:bg-gray-800 flex justify-between items-center">
+                          {address.slice(0, 6)}
+                          {'...'}
+                          {address.slice(address.length - 6)}
+                          <EditFilled />
+                        </span>
                       </div>
-                    </Menu.Item>
+                      <div className="mt-3 flex items-center justify-between gap-3">
+                        <span className="text-sm font-medium -tracking-tighter text-gray-600 dark:text-gray-400">
+                          Wallet
+                        </span>
+                        <span className="rounded-lg bg-gray-100 px-14 py-2 text-sm tracking-tighter dark:bg-gray-800">
+                          {address.slice(0, 6)}
+                          {'...'}
+                          {address.slice(address.length - 6)}
+                        </span>
+                      </div>
+                      <div className="mt-3 flex items-center justify-between gap-3">
+                        <span className="text-sm font-medium -tracking-tighter text-gray-600 dark:text-gray-400">
+                          Balance
+                        </span>
+                        <span className="rounded-lg bg-gray-100 px-5 py-2 text-sm tracking-tighter dark:bg-gray-800">
+                          {balance} ETH
+                        </span>
+                      </div>
+                    </div>
                   </Menu.Item>
                   <Menu.Item>
                     <div className="p-3">

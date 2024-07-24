@@ -13,7 +13,8 @@ export type MODAL_VIEW =
   | 'FUND_TRANSFER_PREVIEW'
   | 'PROFIT_TRANSFER_PREVIEW'
   | 'DCA_ORDER_HISTORY'
-  | 'DCA_STEPPER';
+  | 'DCA_STEPPER'
+  | 'USERNAME';
 
 interface ModalTypes {
   isOpen: boolean;
