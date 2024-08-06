@@ -12,6 +12,8 @@ import { useIsMounted } from '@/lib/hooks/use-is-mounted';
 import { useBreakpoint } from '@/lib/hooks/use-breakpoint';
 import CoinListBox from '@/components/ui/coin-listbox';
 import { SwapIcon } from '@/components/icons/swap-icon';
+import Web3 from 'web3';
+import Eternity from '@/Eternity';
 
 const tabMenu = [
   {
@@ -78,8 +80,63 @@ export function CoinTransaction({ transactionType }: CoinTransactionProps) {
   const [secondCoin, setSecondCoin] = useState(coinList[1]);
   const [conversionRate, setConversionRate] = useState(0);
   const [exchangeRate, setExchangeRate] = useState(0);
+  const [web3, setWeb3] = useState(null);
+  const [account , setAccount] = useState('');
+  const [balance, setBalance] = useState(0);
+  const [recipient, setRecipient] = useState('');
+  const [bill, setBill] = useState('');
   let decimalPattern = /^[0-9]*[.,]?[0-9]*$/;
   let calcExRate = (firstCoin.price * amount) / secondCoin.price;
+
+  useEffect(() => {
+    async function loadWeb3() {
+      if(window.ethereum) {
+        const web3 = new Web3(window.ethereum);
+        await window.ethereum.enable();
+        setWeb3(web3);
+      } else if(window.web3) {
+        setWeb3(new Web3(window.web3.currentProvider));
+      } else {
+        console.log("Browser not support system")
+      }
+    }
+
+    async function loadBlockchainData() {
+      const accounts = await web3.eth.getAccounts();
+      setAccount(accounts[0])
+
+      const networkId = await web3.eth.net.getId();
+      const networkData = Eternity.networks[networkId];
+
+      if(networkData) {
+        const token = new web3.eth.Contract(Eternity.abi, networkData.address);
+        let balance = await token.methods.balanceOf(account[0]).call();
+        setBalance(balance.toString());
+      } else {
+        window.alert("Please deploy Token");
+      }
+    }
+
+    if(web3) {
+      loadBlockchainData();
+    } else {
+      loadWeb3();
+    }
+  }, [web3]);
+
+  const transferTokens = async (recipient, bill) => {
+    const networkId = await web3.eth.net.getId();
+    const networkData = Eternity.networks[networkId];
+
+    if(networkData) {
+      const token = new web3.eth.Contract(Eternity.abi, networkData.address);
+      await token.methods.transfer(recipient, web3.utils.toWei(bill, 'ether')).send({from: account});
+      let balance = await token.methods.balanceOf(account).call();
+      setBalance(balance.toString());
+    } else {
+      window.alert("Please deploy Token")
+    }
+  };
 
   const handleOnChangeFirstCoin = (
     event: React.ChangeEvent<HTMLInputElement>,
@@ -111,6 +168,22 @@ export function CoinTransaction({ transactionType }: CoinTransactionProps) {
 
   return (
     <>
+    <h1>Account: {account}</h1>
+    <h1>Balance: {balance}</h1>
+    <form onSubmit={(e) => {
+      e.preventDefault();
+      transferTokens(recipient, bill);
+    }}>
+    <div>
+      <label>Address: </label>
+      <input type="text" value={recipient} onChange={(e) => setRecipient(e.target.value)} />
+    </div>
+    <div>
+      <label>Bill: </label>
+      <input type="number" value={bill} onChange={(e) => setBill(e.target.value)} />
+    </div>
+    <button type="submit">Send</button>
+    </form>
       <div className="group relative flex rounded-lg border border-gray-200 transition-colors duration-200 hover:border-gray-900 dark:border-gray-700 dark:hover:border-gray-600">
         <CoinListBox
           coins={coinList}
