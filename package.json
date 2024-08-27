@@ -3,6 +3,9 @@
 		"@ant-design/icons": "^5.3.7",
 		"@openzeppelin/contracts": "^5.0.2",
 		"ethereum-blockies": "^0.1.1",
+		"ipfs-core": "^0.18.1",
+		"ipfs-http-client": "^60.0.1",
+		"orbit-db": "^0.29.0",
 		"react-split-pane": "^0.1.92"
 	},
 	"devDependencies": {
