@@ -7,6 +7,8 @@ import Button from '@/components/ui/button';
 import cn from '@/utils/cn';
 import { PlusCircleOutlined, PaperClipOutlined, TeamOutlined, ArrowLeftOutlined } from '@ant-design/icons';
 import blockies from 'ethereum-blockies';
+import { initOrbitDB, addMessage, getMessages } from '@/services/chatService';
+import { useAccount } from 'wagmi';
 
 type Contact = {
   id: number;
@@ -30,6 +32,10 @@ const ChatPage = () => {
   const [resizing, setResizing] = useState(false);
   const [startX, setStartX] = useState(0);
   const [isMobile, setIsMobile] = useState(false);
+  const [messages, setMessages] = useState<any[]>([]);
+  const [inputMessage, setInputMessage] = useState('');
+  const [currentUserAddress, setCurrentUserAddress] = useState('');
+  const { address } = useAccount();
 
   useEffect(() => {
     const handleResize = () => {
@@ -41,6 +47,52 @@ const ChatPage = () => {
 
     return () => window.removeEventListener('resize', handleResize);
   }, []);
+
+  useEffect(() => {
+    initOrbitDB().catch(console.error);
+    setCurrentUserAddress(address ? address : "Unknown");
+  }, [address]);
+
+  useEffect(() => {
+    if (selectedContact) {
+      fetchMessages();
+    }
+  }, [selectedContact]);
+
+  const fetchMessages = async () => {
+    if (selectedContact) {
+      try {
+        const chatId = getChatId(currentUserAddress, selectedContact.address);
+        const fetchedMessages = await getMessages(chatId);
+        setMessages(fetchedMessages);
+      } catch (error) {
+        console.error('Failed to fetch messages:', error);
+      }
+    }
+  };
+  
+  const sendMessage = async () => {
+    if (inputMessage.trim() && selectedContact) {
+      try {
+        const chatId = getChatId(currentUserAddress, selectedContact.address);
+        const message = {
+          from: currentUserAddress,
+          to: selectedContact.address,
+          text: inputMessage,
+          timestamp: Date.now()
+        };
+        await addMessage(chatId, message);
+        setInputMessage('');
+        fetchMessages();
+      } catch (error) {
+        console.error('Failed to send message:', error);
+      }
+    }
+  };
+
+  const getChatId = (address1: string, address2: string) => {
+    return [address1, address2].sort().join('_');
+  };
 
   const addNewContact = () => {
     if (newContactAddress) {
@@ -113,12 +165,16 @@ const ChatPage = () => {
             </div>
             <div className="flex-1 overflow-y-auto p-4 border-b border-gray-200 dark:border-gray-800">
               <div className="mb-4">
-                <div className="p-2 mb-2 bg-gray-100 dark:bg-gray-700 rounded">
-                  Hello, how are you?
-                </div>
-                <div className="p-2 mb-2 bg-blue-100 dark:bg-blue-700 rounded self-end">
-                  I'm fine, thanks!
-                </div>
+                {messages.map((msg, index) => (
+                  <div key={index} className={cn(
+                    "p-2 mb-2 rounded",
+                    msg.payload.value.from === currentUserAddress
+                      ? "bg-blue-100 dark:bg-blue-700 self-end"
+                      : "bg-gray-100 dark:bg-gray-700"
+                  )}>
+                    {msg.payload.value.text}
+                  </div>
+                ))}
               </div>
             </div>
 
@@ -128,8 +184,11 @@ const ChatPage = () => {
                 type="text"
                 className="flex-1 p-2 border border-gray-200 dark:border-gray-800 rounded"
                 placeholder="Type your message here..."
+                value={inputMessage}
+                onChange={(e) => setInputMessage(e.target.value)}
+                onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
               />
-              <Button className="ml-2">Send</Button>
+              <Button className="ml-2" onClick={sendMessage}>Send</Button>
             </div>
           </div>
         ) : (
@@ -286,12 +345,16 @@ const ChatPage = () => {
                 Chat with {selectedContact?.address || 'Select a contact'}
               </h2>
               <div className="mb-4">
-                <div className="p-2 mb-2 bg-gray-100 dark:bg-gray-700 rounded">
-                  Hello, how are you?
-                </div>
-                <div className="p-2 mb-2 bg-blue-100 dark:bg-blue-700 rounded self-end">
-                  I'm fine, thanks!
-                </div>
+                {messages.map((msg, index) => (
+                  <div key={index} className={cn(
+                    "p-2 mb-2 rounded",
+                    msg.payload.value.from === currentUserAddress
+                      ? "bg-blue-100 dark:bg-blue-700 self-end"
+                      : "bg-gray-100 dark:bg-gray-700"
+                  )}>
+                    {msg.payload.value.text}
+                  </div>
+                ))}
               </div>
             </div>
 
@@ -301,8 +364,11 @@ const ChatPage = () => {
                 type="text"
                 className="flex-1 p-2 border border-gray-200 dark:border-gray-800 rounded"
                 placeholder="Type your message here..."
+                value={inputMessage}
+                onChange={(e) => setInputMessage(e.target.value)}
+                onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
               />
-              <Button className="ml-2">Send</Button>
+              <Button className="ml-2" onClick={sendMessage}>Send</Button>
             </div>
           </div>
         </>

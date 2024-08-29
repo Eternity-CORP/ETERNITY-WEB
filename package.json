@@ -2,6 +2,7 @@
 	"dependencies": {
 		"@ant-design/icons": "^5.3.7",
 		"@openzeppelin/contracts": "^5.0.2",
+		"axios": "^1.7.5",
 		"ethereum-blockies": "^0.1.1",
 		"ipfs-core": "^0.18.1",
 		"ipfs-http-client": "^60.0.1",
@@ -19,10 +20,17 @@
 		"@typechain/ethers-v6": "^0.5.0",
 		"@typechain/hardhat": "^9.0.0",
 		"chai": "^4.2.0",
+		"concurrently": "^8.2.2",
 		"ethers": "^6.4.0",
 		"hardhat": "^2.22.6",
 		"hardhat-gas-reporter": "^1.0.8",
 		"solidity-coverage": "^0.8.0",
 		"typechain": "^8.3.0"
+	},
+	"scripts": {
+		"start:frontend": "cd frontend && pnpm dev",
+		"start:backend": "cd backend && node server.js",
+		"start:ipfs": "ipfs daemon",
+		"start:all": "concurrently \"pnpm run start:frontend\" \"pnpm run start:backend\" \"pnpm run start:ipfs\""
 	}
 }

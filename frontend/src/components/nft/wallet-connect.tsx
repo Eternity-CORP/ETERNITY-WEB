@@ -31,12 +31,12 @@ export default function WalletConnect({
   const [username, setUsername] = useState('eternaki');
   const [menuOpen, setMenuOpen] = useState(false);
 
-  const handleEditClick = (e) => {
+  const handleEditClick = (e:any) => {
     e.stopPropagation();
     setIsEditing(true);
   };
 
-  const handleInputChange = (e) => {
+  const handleInputChange = (e:any) => {
     setUsername(e.target.value);
   };
 

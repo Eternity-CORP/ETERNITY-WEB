@@ -1,26 +1,36 @@
-const IPFS = require('ipfs-core');
-const OrbitDB = require('orbit-db');
+import OrbitDB from 'orbit-db';
+import * as IPFS from 'ipfs-core';
 
-async function main() {
-  // Создаем IPFS узел
+let orbitdb;
+let chats = {};
+
+export async function initOrbitDB() {
   const ipfs = await IPFS.create();
-
-  // Создаем OrbitDB экземпляр
-  const orbitdb = await OrbitDB.createInstance(ipfs);
-
-  // Создаем лог-базу данных
-  const db = await orbitdb.log('chat');
-
-  // Добавляем сообщение в базу данных
-  await db.add({ message: 'Hello from the backend!' });
-
-  // Читаем все сообщения из базы данных
-  const messages = db.iterator({ limit: -1 }).collect();
-  messages.forEach((entry) => console.log(entry.payload.value));
-
-  // Закрываем соединение
-  await orbitdb.disconnect();
-  await ipfs.stop();
+  orbitdb = await OrbitDB.createInstance(ipfs);
+  console.log('OrbitDB initialized');
 }
 
-main().catch(console.error);
+async function getChatDB(chatId) {
+  if (!chats[chatId]) {
+    chats[chatId] = await orbitdb.feed(chatId);
+    await chats[chatId].load();
+  }
+  return chats[chatId];
+}
+
+export async function addMessage(chatId, message) {
+  if (!orbitdb) {
+    throw new Error('Database not initialized');
+  }
+  const chatDB = await getChatDB(chatId);
+  const hash = await chatDB.add(message);
+  return hash;
+}
+
+export async function getMessages(chatId) {
+  if (!orbitdb) {
+    throw new Error('Database not initialized');
+  }
+  const chatDB = await getChatDB(chatId);
+  return chatDB.iterator({ limit: -1 }).collect();
+}
