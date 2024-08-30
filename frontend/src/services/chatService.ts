@@ -15,7 +15,7 @@ export async function initOrbitDB() {
 export async function addMessage(chatId: string, message: { from: string; to: string; text: string; timestamp: number }) {
   try {
     const response = await axios.post(`${API_URL}/message`, { chatId, message });
-    return response.data;
+    return response.data.hash; // Возвращаем хеш сообщения
   } catch (error) {
     console.error('Failed to add message:', error);
     throw error;
