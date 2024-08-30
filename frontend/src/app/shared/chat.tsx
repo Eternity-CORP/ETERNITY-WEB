@@ -15,6 +15,12 @@ type Contact = {
   name: string;
 };
 
+type Group = {
+  id: string;
+  name: string;
+  members: string[]; // массив адресов участников
+};
+
 const ChatPage = () => {
   const [contactList, setContactList] = useState<Contact[]>([]);
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
@@ -30,6 +36,10 @@ const ChatPage = () => {
   const [resizing, setResizing] = useState(false);
   const [startX, setStartX] = useState(0);
   const [isMobile, setIsMobile] = useState(false);
+  const [groups, setGroups] = useState<Group[]>([]);
+  const [selectedGroup, setSelectedGroup] = useState<Group | null>(null);
+  const [newGroupName, setNewGroupName] = useState('');
+  const [showGroupInput, setShowGroupInput] = useState(false);
 
   useEffect(() => {
     initOrbitDB().catch(console.error);
@@ -41,6 +51,8 @@ const ChatPage = () => {
       setContactList([]);
       setSelectedContact(null);
       setMessages({});
+      setGroups([]);
+      setSelectedGroup(null);
     }
     const handleResize = () => {
       setIsMobile(window.innerWidth <= 768);
@@ -51,16 +63,16 @@ const ChatPage = () => {
   }, [address]);
 
   useEffect(() => {
-    if (selectedContact) {
+    if (selectedContact || selectedGroup) {
       fetchMessages();
     }
-  }, [selectedContact]);
+  }, [selectedContact, selectedGroup]);
 
   useEffect(() => {
     if (currentUserAddress) {
       saveToLocalStorage();
     }
-  }, [messages, selectedContact, contactList, currentUserAddress]);
+  }, [messages, selectedContact, contactList, groups, currentUserAddress]);
 
   useEffect(() => {
     const newAvatars: { [key: string]: string } = {};
@@ -74,17 +86,20 @@ const ChatPage = () => {
   const loadFromLocalStorage = (userAddress: string) => {
     const savedData = localStorage.getItem(`chatData_${userAddress}`);
     if (savedData) {
-      const { messages: savedMessages, selectedContact: savedSelectedContact, contactList: savedContactList } = JSON.parse(savedData);
-      if (Array.isArray(savedContactList) && savedContactList.length > 0) {
+      const { messages: savedMessages, selectedContact: savedSelectedContact, contactList: savedContactList, groups: savedGroups } = JSON.parse(savedData);
+      if (Array.isArray(savedContactList)) {
         setContactList(savedContactList);
-      } else {
-        setContactList([]);
+      }
+      if (Array.isArray(savedGroups)) {
+        // Фильтруем группы, в которых пользователь является участником
+        const userGroups = savedGroups.filter(group => group.members.includes(userAddress));
+        setGroups(userGroups);
       }
       setMessages(savedMessages || {});
       setSelectedContact(savedSelectedContact || null);
     } else {
-      // Если данных нет, устанавливаем пустые значения
       setContactList([]);
+      setGroups([]);
       setSelectedContact(null);
       setMessages({});
     }
@@ -95,9 +110,33 @@ const ChatPage = () => {
       const dataToSave = {
         messages,
         selectedContact,
-        contactList
+        contactList,
+        groups
       };
       localStorage.setItem(`chatData_${currentUserAddress}`, JSON.stringify(dataToSave));
+      
+      // Сохраняем информацию о группах для всех участников
+      groups.forEach(group => {
+        group.members.forEach(member => {
+          if (member !== currentUserAddress) {
+            const memberData = localStorage.getItem(`chatData_${member}`);
+            if (memberData) {
+              const parsedData = JSON.parse(memberData);
+              const updatedGroups = parsedData.groups ? 
+                parsedData.groups.filter((g: Group) => g.id !== group.id).concat(group) :
+                [group];
+              localStorage.setItem(`chatData_${member}`, JSON.stringify({
+                ...parsedData,
+                groups: updatedGroups,
+                messages: {
+                  ...parsedData.messages,
+                  [`group_${group.id}`]: messages[`group_${group.id}`] || []
+                }
+              }));
+            }
+          }
+        });
+      });
     }
   };
 
@@ -113,16 +152,29 @@ const ChatPage = () => {
       } catch (error) {
         console.error('Failed to fetch messages:', error);
       }
+    } else if (selectedGroup) {
+      try {
+        const chatId = `group_${selectedGroup.id}`;
+        const fetchedMessages = await getMessages(chatId);
+        setMessages(prevMessages => ({
+          ...prevMessages,
+          [chatId]: fetchedMessages
+        }));
+      } catch (error) {
+        console.error('Failed to fetch group messages:', error);
+      }
     }
   };
   
   const sendMessage = async () => {
-    if (inputMessage.trim() && selectedContact) {
+    if (inputMessage.trim() && (selectedContact || selectedGroup)) {
       try {
-        const chatId = getChatId(currentUserAddress, selectedContact.address);
+        const chatId = selectedGroup 
+          ? `group_${selectedGroup.id}`
+          : getChatId(currentUserAddress, selectedContact!.address);
         const message = {
           from: currentUserAddress,
-          to: selectedContact.address,
+          to: selectedGroup ? selectedGroup.id : selectedContact!.address,
           text: inputMessage,
           timestamp: Date.now()
         };
@@ -191,7 +243,32 @@ const ChatPage = () => {
   };
 
   const addGroup = () => {
-    alert('Group creation is not yet implemented!');
+    if (newGroupName.trim()) {
+      const newGroup: Group = {
+        id: Date.now().toString(),
+        name: newGroupName.trim(),
+        members: [currentUserAddress]
+      };
+      setGroups([...groups, newGroup]);
+      setNewGroupName('');
+      setShowGroupInput(false);
+    }
+  };
+
+  const addMemberToGroup = (groupId: string, memberAddress: string) => {
+    setGroups(prevGroups => prevGroups.map(group => 
+      group.id === groupId
+        ? { ...group, members: Array.from(new Set([...group.members, memberAddress])) }
+        : group
+    ));
+  };
+
+  const removeMemberFromGroup = (groupId: string, memberAddress: string) => {
+    setGroups(prevGroups => prevGroups.map(group => 
+      group.id === groupId
+        ? { ...group, members: group.members.filter(member => member !== memberAddress) }
+        : group
+    ));
   };
 
   const formatMessageTime = (timestamp: number) => {
@@ -200,6 +277,9 @@ const ChatPage = () => {
   };
 
   const getChatId = (address1: string, address2: string) => {
+    if (address2.startsWith('group_')) {
+      return address2;
+    }
     return [address1, address2].sort().join('_');
   };
 
@@ -252,7 +332,7 @@ const ChatPage = () => {
                 <button className="p-1 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700" onClick={() => setShowInput(!showInput)}>
                   <PlusCircleOutlined />
                 </button>
-                <button className="p-1 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700" onClick={addGroup}>
+                <button className="p-1 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700" onClick={() => setShowGroupInput(!showGroupInput)}>
                   <TeamOutlined />
                 </button>
               </div>
@@ -278,6 +358,20 @@ const ChatPage = () => {
                 </Button>
               </div>
             )}
+            {showGroupInput && (
+              <div className="p-4">
+                <input
+                  type="text"
+                  className="w-full p-2 mb-2 border border-gray-200 dark:border-gray-800 rounded"
+                  placeholder="Enter group name..."
+                  value={newGroupName}
+                  onChange={(e) => setNewGroupName(e.target.value)}
+                />
+                <Button onClick={addGroup} className="w-full">
+                  Create Group
+                </Button>
+              </div>
+            )}
             <ul className="flex-1 overflow-y-auto p-4">
               {contactList.map((contact) => (
                 <li
@@ -288,7 +382,10 @@ const ChatPage = () => {
                       ? 'bg-gray-200 dark:bg-gray-700'
                       : 'hover:bg-gray-100 dark:hover:bg-gray-600'
                   )}
-                  onClick={() => setSelectedContact(contact)}
+                  onClick={() => {
+                    setSelectedContact(contact);
+                    setSelectedGroup(null);
+                  }}
                   title={contact.address}
                 >
                   <div className="flex items-center">
@@ -309,6 +406,28 @@ const ChatPage = () => {
                   </div>
                 </li>
               ))}
+              {groups.map((group) => (
+                <li
+                  key={group.id}
+                  className={cn(
+                    'flex items-center p-2 mb-2 rounded cursor-pointer',
+                    selectedGroup && selectedGroup.id === group.id
+                      ? 'bg-gray-200 dark:bg-gray-700'
+                      : 'hover:bg-gray-100 dark:hover:bg-gray-600'
+                  )}
+                  onClick={() => {
+                    setSelectedGroup(group);
+                    setSelectedContact(null);
+                  }}
+                >
+                  <div className="flex items-center">
+                    <div className="w-8 h-8 rounded-full mr-2 bg-gray-300 flex items-center justify-center">
+                      <TeamOutlined />
+                    </div>
+                    <span className="truncate">{group.name}</span>
+                  </div>
+                </li>
+              ))}
             </ul>
           </div>
         )
@@ -319,7 +438,7 @@ const ChatPage = () => {
             style={{ width: sidebarWidth }}
           >
             <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-800">
-              <h2 className="text-lg font-semibold">Contacts</h2>
+              <h2 className="text-lg font-semibold">Contacts & Groups</h2>
               <div className="flex items-center space-x-2">
                 <button
                   className="p-1 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700"
@@ -329,7 +448,7 @@ const ChatPage = () => {
                 </button>
                 <button
                   className="p-1 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700"
-                  onClick={addGroup}
+                  onClick={() => setShowGroupInput(!showGroupInput)}
                 >
                   <TeamOutlined />
                 </button>
@@ -356,6 +475,20 @@ const ChatPage = () => {
                 </Button>
               </div>
             )}
+            {showGroupInput && (
+              <div className="p-4">
+                <input
+                  type="text"
+                  className="w-full p-2 mb-2 border border-gray-200 dark:border-gray-800 rounded"
+                  placeholder="Enter group name..."
+                  value={newGroupName}
+                  onChange={(e) => setNewGroupName(e.target.value)}
+                />
+                <Button onClick={addGroup} className="w-full">
+                  Create Group
+                </Button>
+              </div>
+            )}
             <ul className="flex-1 overflow-y-auto p-4">
               {contactList.map((contact) => (
                 <li
@@ -366,7 +499,10 @@ const ChatPage = () => {
                       ? 'bg-gray-200 dark:bg-gray-700'
                       : 'hover:bg-gray-100 dark:hover:bg-gray-600'
                   )}
-                  onClick={() => setSelectedContact(contact)}
+                  onClick={() => {
+                    setSelectedContact(contact);
+                    setSelectedGroup(null);
+                  }}
                   title={contact.address}
                 >
                   <div className="flex items-center">
@@ -384,6 +520,28 @@ const ChatPage = () => {
                     <span className="truncate">
                       {contact.name ? `${contact.name} (${formatAddress(contact.address)})` : formatAddress(contact.address)}
                     </span>
+                  </div>
+                </li>
+              ))}
+              {groups.map((group) => (
+                <li
+                  key={group.id}
+                  className={cn(
+                    'flex items-center p-2 mb-2 rounded cursor-pointer',
+                    selectedGroup && selectedGroup.id === group.id
+                      ? 'bg-gray-200 dark:bg-gray-700'
+                      : 'hover:bg-gray-100 dark:hover:bg-gray-600'
+                  )}
+                  onClick={() => {
+                    setSelectedGroup(group);
+                    setSelectedContact(null);
+                  }}
+                >
+                  <div className="flex items-center">
+                    <div className="w-8 h-8 rounded-full mr-2 bg-gray-300 flex items-center justify-center">
+                      <TeamOutlined />
+                    </div>
+                    <span className="truncate">{group.name}</span>
                   </div>
                 </li>
               ))}
@@ -399,10 +557,37 @@ const ChatPage = () => {
           <div className="flex-1 flex flex-col h-full">
             <div className="flex-1 overflow-y-auto p-4 border-b border-gray-200 dark:border-gray-800">
               <h2 className="text-lg font-semibold mb-4">
-                Chat with {selectedContact?.address ? formatAddress(selectedContact.address) : 'Select a contact'}
+                {selectedGroup 
+                  ? `Group: ${selectedGroup.name}`
+                  : selectedContact
+                    ? `Chat with ${formatAddress(selectedContact.address)}`
+                    : 'Select a contact or group'
+                }
               </h2>
+              {selectedGroup && (
+                <div className="mb-4">
+                  <h3 className="text-md font-semibold">Members:</h3>
+                  <ul className="list-disc list-inside">
+                    {selectedGroup.members.map((member) => (
+                      <li key={member}>{formatAddress(member)}</li>
+                    ))}
+                  </ul>
+                  <input
+                    type="text"
+                    className="w-full p-2 mt-2 border border-gray-200 dark:border-gray-800 rounded"
+                    placeholder="Add member (address)"
+                    onKeyPress={(e) => {
+                      if (e.key === 'Enter') {
+                        addMemberToGroup(selectedGroup.id, e.currentTarget.value);
+                        e.currentTarget.value = '';
+                        saveToLocalStorage(); // Сохраняем изменения сразу после добавления участника
+                      }
+                    }}
+                  />
+                </div>
+              )}
               <div className="mb-4 space-y-4">
-                {selectedContact && messages[getChatId(currentUserAddress, selectedContact.address)]?.map((msg, index) => (
+                {(selectedContact || selectedGroup) && messages[getChatId(currentUserAddress, selectedContact?.address || `group_${selectedGroup!.id}`)]?.map((msg, index) => (
                   <div
                     key={index}
                     className={cn(

@@ -31,3 +31,10 @@ export async function getMessages(chatId: string) {
     throw error;
   }
 }
+
+export const getChatId = (address1: string, address2: string) => {
+  if (address2.startsWith('group_')) {
+    return address2;
+  }
+  return [address1, address2].sort().join('_');
+};
