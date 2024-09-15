@@ -1,24 +1,61 @@
+//TODO
+// Возможность отправки фото\видео, гс
+// Роли\права для участников группы
+// Возможность удаления сообщений
+// Возможность редактирования сообщений
+// Возможность удаления группы
+// Возможность редактирования группы
+// Возможность удаления контакта
+// Возможность редактирования контакта
+// Возможность удаления сообщений
+// Возможность пересылки сообщений
+// Возможность пересылки файлов
+// Возможность пересылки фото\видео
+// Возможность пересылки документов
+// Возможность пересылки ссылок
+// Возможность пересылки контактов
+// Возможность пересылки локации
+// Возможность пересылки аудио
+// Возможность пересылки видео
+// Возможность отввечат на сообщения
+
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Button from '@/components/ui/button';
 import cn from '@/utils/cn';
-import { PlusCircleOutlined, PaperClipOutlined, TeamOutlined, ArrowLeftOutlined } from '@ant-design/icons';
+import { PlusCircleOutlined, PaperClipOutlined, TeamOutlined, ArrowLeftOutlined, CloseOutlined, DeleteOutlined, EditOutlined, CheckOutlined } from '@ant-design/icons';
 import blockies from 'ethereum-blockies';
 import { initOrbitDB, addMessage, getMessages } from '@/services/chatService';
 import { useAccount } from 'wagmi';
 import Image from 'next/image';
+import { format, isToday, isYesterday } from 'date-fns';
 
 type Contact = {
   id: string;
   address: string;
   name: string;
+  unreadCount: number;
 };
 
 type Group = {
   id: string;
   name: string;
-  members: string[]; // массив адресов участников
+  members: string[];
+  unreadCount: number;
+  creator: string;
+};
+
+type Message = {
+  hash: string;
+  payload: {
+    value: {
+      from: string;
+      to: string;
+      text: string;
+      timestamp: number;
+    }
+  }
 };
 
 const ChatPage = () => {
@@ -40,6 +77,13 @@ const ChatPage = () => {
   const [selectedGroup, setSelectedGroup] = useState<Group | null>(null);
   const [newGroupName, setNewGroupName] = useState('');
   const [showGroupInput, setShowGroupInput] = useState(false);
+  const [unreadCounts, setUnreadCounts] = useState<{ [key: string]: number }>({});
+  const [showGroupMembers, setShowGroupMembers] = useState(false);
+  const groupMembersRef = useRef<HTMLDivElement>(null);
+  const [editingMessage, setEditingMessage] = useState<Message | null>(null);
+  const [editedMessageText, setEditedMessageText] = useState('');
+  const [editingContact, setEditingContact] = useState<Contact | null>(null);
+  const [editedContactName, setEditedContactName] = useState('');
 
   useEffect(() => {
     initOrbitDB().catch(console.error);
@@ -70,9 +114,15 @@ const ChatPage = () => {
 
   useEffect(() => {
     if (currentUserAddress) {
-      saveToLocalStorage();
+      const dataToSave = {
+        messages,
+        contactList,
+        groups,
+        unreadCounts
+      };
+      localStorage.setItem(`chatData_${currentUserAddress}`, JSON.stringify(dataToSave));
     }
-  }, [messages, selectedContact, contactList, groups, currentUserAddress]);
+  }, [messages, contactList, groups, unreadCounts, currentUserAddress]);
 
   useEffect(() => {
     const newAvatars: { [key: string]: string } = {};
@@ -80,63 +130,55 @@ const ChatPage = () => {
       const canvas = blockies.create({ seed: contact.address });
       newAvatars[contact.address] = canvas.toDataURL();
     });
+    groups.forEach(group => {
+      group.members.forEach(member => {
+        if (!newAvatars[member]) {
+          const canvas = blockies.create({ seed: member });
+          newAvatars[member] = canvas.toDataURL();
+        }
+      });
+    });
     setAvatars(newAvatars);
-  }, [contactList]);
+  }, [contactList, groups]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (groupMembersRef.current && !groupMembersRef.current.contains(event.target as Node)) {
+        setShowGroupMembers(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
+  const toggleGroupMembers = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setShowGroupMembers(!showGroupMembers);
+  };
 
   const loadFromLocalStorage = (userAddress: string) => {
     const savedData = localStorage.getItem(`chatData_${userAddress}`);
     if (savedData) {
-      const { messages: savedMessages, selectedContact: savedSelectedContact, contactList: savedContactList, groups: savedGroups } = JSON.parse(savedData);
+      const { messages: savedMessages, selectedContact: savedSelectedContact, contactList: savedContactList, groups: savedGroups, unreadCounts: savedUnreadCounts } = JSON.parse(savedData);
       if (Array.isArray(savedContactList)) {
         setContactList(savedContactList);
       }
       if (Array.isArray(savedGroups)) {
-        // Фильтруем группы, в которых пользователь является участником
-        const userGroups = savedGroups.filter(group => group.members.includes(userAddress));
-        setGroups(userGroups);
+        setGroups(savedGroups);
       }
+      console.log(`Loaded messages from localStorage for ${userAddress}:`, savedMessages);
       setMessages(savedMessages || {});
       setSelectedContact(savedSelectedContact || null);
+      setUnreadCounts(savedUnreadCounts || {});
     } else {
       setContactList([]);
       setGroups([]);
       setSelectedContact(null);
       setMessages({});
-    }
-  };
-
-  const saveToLocalStorage = () => {
-    if (currentUserAddress) {
-      const dataToSave = {
-        messages,
-        selectedContact,
-        contactList,
-        groups
-      };
-      localStorage.setItem(`chatData_${currentUserAddress}`, JSON.stringify(dataToSave));
-      
-      // Сохраняем информацию о группах для всех участников
-      groups.forEach(group => {
-        group.members.forEach(member => {
-          if (member !== currentUserAddress) {
-            const memberData = localStorage.getItem(`chatData_${member}`);
-            if (memberData) {
-              const parsedData = JSON.parse(memberData);
-              const updatedGroups = parsedData.groups ? 
-                parsedData.groups.filter((g: Group) => g.id !== group.id).concat(group) :
-                [group];
-              localStorage.setItem(`chatData_${member}`, JSON.stringify({
-                ...parsedData,
-                groups: updatedGroups,
-                messages: {
-                  ...parsedData.messages,
-                  [`group_${group.id}`]: messages[`group_${group.id}`] || []
-                }
-              }));
-            }
-          }
-        });
-      });
+      setUnreadCounts({});
     }
   };
 
@@ -145,10 +187,18 @@ const ChatPage = () => {
       try {
         const chatId = getChatId(currentUserAddress, selectedContact.address);
         const fetchedMessages = await getMessages(chatId);
-        setMessages(prevMessages => ({
-          ...prevMessages,
-          [chatId]: fetchedMessages
-        }));
+        setMessages(prevMessages => {
+          const existingMessages = prevMessages[chatId] || [];
+          const newMessages = fetchedMessages.filter(fetchedMsg => 
+            !existingMessages.some(existingMsg => existingMsg.hash === fetchedMsg.hash)
+          );
+          console.log(`Existing messages for ${chatId}:`, existingMessages);
+          console.log(`New messages for ${chatId}:`, newMessages);
+          return {
+            ...prevMessages,
+            [chatId]: [...existingMessages, ...newMessages]
+          };
+        });
       } catch (error) {
         console.error('Failed to fetch messages:', error);
       }
@@ -156,39 +206,124 @@ const ChatPage = () => {
       try {
         const chatId = `group_${selectedGroup.id}`;
         const fetchedMessages = await getMessages(chatId);
-        setMessages(prevMessages => ({
-          ...prevMessages,
-          [chatId]: fetchedMessages
-        }));
+        setMessages(prevMessages => {
+          const existingMessages = prevMessages[chatId] || [];
+          const newMessages = fetchedMessages.filter(fetchedMsg => 
+            !existingMessages.some(existingMsg => existingMsg.hash === fetchedMsg.hash)
+          );
+          console.log(`Existing messages for ${chatId}:`, existingMessages);
+          console.log(`New messages for ${chatId}:`, newMessages);
+          return {
+            ...prevMessages,
+            [chatId]: [...existingMessages, ...newMessages]
+          };
+        });
       } catch (error) {
         console.error('Failed to fetch group messages:', error);
       }
     }
   };
   
-  const sendMessage = async () => {
-    if (inputMessage.trim() && (selectedContact || selectedGroup)) {
-      try {
-        const chatId = selectedGroup 
-          ? `group_${selectedGroup.id}`
-          : getChatId(currentUserAddress, selectedContact!.address);
-        const message = {
-          from: currentUserAddress,
-          to: selectedGroup ? selectedGroup.id : selectedContact!.address,
-          text: inputMessage,
-          timestamp: Date.now()
+  const sendMessage = () => {
+    if (inputMessage.trim()) {
+      const chatId = getChatId(currentUserAddress, selectedContact?.address || `group_${selectedGroup!.id}`);
+      if (editingMessage) {
+        // Если редактируем сообщение
+        setMessages(prevMessages => {
+          const updatedMessages = prevMessages[chatId].map(msg =>
+            msg.hash === editingMessage.hash
+              ? { ...msg, payload: { ...msg.payload, value: { ...msg.payload.value, text: inputMessage.trim() } } }
+              : msg
+          );
+          // Сохраняем обновленные сообщения в localStorage
+          const chatData = JSON.parse(localStorage.getItem(`chatData_${currentUserAddress}`) || '{}');
+          chatData.messages[chatId] = updatedMessages;
+          localStorage.setItem(`chatData_${currentUserAddress}`, JSON.stringify(chatData));
+          return {
+            ...prevMessages,
+            [chatId]: updatedMessages
+          };
+        });
+        setEditingMessage(null);
+      } else {
+        // Если отправляем новое сообщение
+        const newMessage = {
+          hash: generateUniqueId(), // Функция для генерации уникального ID
+          payload: {
+            value: {
+              from: currentUserAddress,
+              to: selectedContact?.address || `group_${selectedGroup!.id}`,
+              timestamp: Date.now(),
+              text: inputMessage.trim(),
+            }
+          }
         };
-        const hash = await addMessage(chatId, message);
-        setMessages(prevMessages => ({
-          ...prevMessages,
-          [chatId]: [...(prevMessages[chatId] || []), { hash, payload: { value: message } }]
-        }));
-        setInputMessage('');
-      } catch (error) {
-        console.error('Failed to send message:', error);
+        setMessages(prevMessages => {
+          const updatedMessages = [...(prevMessages[chatId] || []), newMessage];
+          // Сохраняем обновленные сообщения в localStorage
+          const chatData = JSON.parse(localStorage.getItem(`chatData_${currentUserAddress}`) || '{}');
+          chatData.messages[chatId] = updatedMessages;
+          localStorage.setItem(`chatData_${currentUserAddress}`, JSON.stringify(chatData));
+          return {
+            ...prevMessages,
+            [chatId]: updatedMessages
+          };
+        });
       }
+      setInputMessage('');
     }
   };
+
+  const generateUniqueId = () => {
+    return Date.now().toString(36) + Math.random().toString(36).substr(2);
+  };
+
+  const updateUnreadCount = (chatId: string, recipient: string) => {
+    const recipientData = JSON.parse(localStorage.getItem(`chatData_${recipient}`) || '{}');
+    const updatedUnreadCounts = { ...recipientData.unreadCounts, [chatId]: (recipientData.unreadCounts?.[chatId] || 0) + 1 };
+    localStorage.setItem(`chatData_${recipient}`, JSON.stringify({
+      ...recipientData,
+      unreadCounts: updatedUnreadCounts
+    }));
+  };
+
+  const addChatForRecipient = (recipientAddress: string) => {
+    const recipientData = JSON.parse(localStorage.getItem(`chatData_${recipientAddress}`) || '{}');
+    const updatedContactList = recipientData.contactList || [];
+    if (!updatedContactList.some((contact: Contact) => contact.address === currentUserAddress)) {
+      updatedContactList.push({
+        id: Date.now().toString(),
+        address: currentUserAddress,
+        name: '',
+        unreadCount: 0
+      });
+    }
+    localStorage.setItem(`chatData_${recipientAddress}`, JSON.stringify({
+      ...recipientData,
+      contactList: updatedContactList
+    }));
+  };
+
+  const markAsRead = (chatId: string) => {
+    setUnreadCounts(prev => ({ ...prev, [chatId]: 0 }));
+    const dataToSave = {
+      messages,
+      contactList,
+      groups,
+      unreadCounts
+    };
+    localStorage.setItem(`chatData_${currentUserAddress}`, JSON.stringify(dataToSave));
+  };
+
+  useEffect(() => {
+    if (selectedContact) {
+      const chatId = getChatId(currentUserAddress, selectedContact.address);
+      markAsRead(chatId);
+    } else if (selectedGroup) {
+      const chatId = `group_${selectedGroup.id}`;
+      markAsRead(chatId);
+    }
+  }, [selectedContact, selectedGroup]);
 
   const addNewContact = () => {
     if (newContactAddress) {
@@ -196,8 +331,9 @@ const ChatPage = () => {
         id: Date.now().toString(),
         address: newContactAddress,
         name: newContactName,
+        unreadCount: 0
       };
-      setContactList([...contactList, newContact]);
+      setContactList(prevList => [...prevList, newContact]);
       setNewContactAddress('');
       setNewContactName('');
       setShowInput(false);
@@ -247,7 +383,9 @@ const ChatPage = () => {
       const newGroup: Group = {
         id: Date.now().toString(),
         name: newGroupName.trim(),
-        members: [currentUserAddress]
+        members: [currentUserAddress],
+        unreadCount: 0,
+        creator: currentUserAddress
       };
       setGroups([...groups, newGroup]);
       setNewGroupName('');
@@ -269,6 +407,28 @@ const ChatPage = () => {
         ? { ...group, members: group.members.filter(member => member !== memberAddress) }
         : group
     ));
+
+    // Удаляем группу из данных удаленного пользователя
+    const memberData = JSON.parse(localStorage.getItem(`chatData_${memberAddress}`) || '{}');
+    if (memberData.groups) {
+      memberData.groups = memberData.groups.filter((g: Group) => g.id !== groupId);
+    }
+    if (memberData.messages) {
+      delete memberData.messages[`group_${groupId}`];
+    }
+    if (memberData.unreadCounts) {
+      delete memberData.unreadCounts[`group_${groupId}`];
+    }
+    localStorage.setItem(`chatData_${memberAddress}`, JSON.stringify(memberData));
+
+    // Обновляем данные текущего пльзователя
+    const dataToSave = {
+      messages,
+      contactList,
+      groups,
+      unreadCounts
+    };
+    localStorage.setItem(`chatData_${currentUserAddress}`, JSON.stringify(dataToSave));
   };
 
   const formatMessageTime = (timestamp: number) => {
@@ -281,6 +441,77 @@ const ChatPage = () => {
       return address2;
     }
     return [address1, address2].sort().join('_');
+  };
+
+  const getLastMessage = (chatId: string) => {
+    const chatMessages = messages[chatId];
+    if (chatMessages && chatMessages.length > 0) {
+      const lastMessage = chatMessages[chatMessages.length - 1];
+      const text = lastMessage.payload.value.text;
+      return text.length > 20 ? text.substring(0, 20) + '...' : text;
+    }
+    return '';
+  };
+
+  const startEditingMessage = (msg: Message) => {
+    setEditingMessage(msg);
+    setInputMessage(msg.payload.value.text);
+  };
+
+  const deleteMessage = (chatId: string, messageHash: string) => {
+    setMessages(prevMessages => {
+      const updatedMessages = prevMessages[chatId].filter(msg => msg.hash !== messageHash);
+      // Сохраняем обновленные сообщения в localStorage
+      const chatData = JSON.parse(localStorage.getItem(`chatData_${currentUserAddress}`) || '{}');
+      chatData.messages[chatId] = updatedMessages;
+      localStorage.setItem(`chatData_${currentUserAddress}`, JSON.stringify(chatData));
+      return {
+        ...prevMessages,
+        [chatId]: updatedMessages
+      };
+    });
+  };
+
+  const deleteContact = (contactId: string) => {
+    setContactList(prevList => prevList.filter(contact => contact.id !== contactId));
+    if (selectedContact?.id === contactId) {
+      setSelectedContact(null);
+    }
+    const dataToSave = {
+      messages,
+      contactList: contactList.filter(contact => contact.id !== contactId),
+      groups,
+      unreadCounts
+    };
+    localStorage.setItem(`chatData_${currentUserAddress}`, JSON.stringify(dataToSave));
+  };
+
+  const startEditingContact = (contact: Contact) => {
+    setEditingContact(contact);
+    setEditedContactName(contact.name);
+  };
+
+  const saveEditedContact = () => {
+    if (editingContact) {
+      setContactList(prevList => prevList.map(contact =>
+        contact.id === editingContact.id
+          ? { ...contact, name: editedContactName }
+          : contact
+      ));
+      setEditingContact(null);
+      setEditedContactName('');
+      const dataToSave = {
+        messages,
+        contactList: contactList.map(contact =>
+          contact.id === editingContact.id
+            ? { ...contact, name: editedContactName }
+            : contact
+        ),
+        groups,
+        unreadCounts
+      };
+      localStorage.setItem(`chatData_${currentUserAddress}`, JSON.stringify(dataToSave));
+    }
   };
 
   return (
@@ -298,14 +529,32 @@ const ChatPage = () => {
             </div>
             <div className="flex-1 overflow-y-auto p-4 border-b border-gray-200 dark:border-gray-800">
               <div className="mb-4">
-                {messages[getChatId(currentUserAddress, selectedContact.address)]?.map((msg, index) => (
+                {messages[getChatId(currentUserAddress, selectedContact.address)]?.filter(msg => !msg.payload.value.deleted).map((msg, index) => (
                   <div key={index} className={cn(
-                    "p-2 mb-2 rounded",
+                    "p-3 rounded-lg max-w-[40%]",
                     msg.payload.value.from === currentUserAddress
-                      ? "bg-blue-100 dark:bg-blue-700 self-end"
-                      : "bg-gray-100 dark:bg-gray-700"
+                      ? "bg-blue-500 text-white ml-auto"
+                      : "bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white"
                   )}>
-                    {msg.payload.value.text}
+                    <p className="break-words">{msg.payload.value.text}</p>
+                    <p className={cn(
+                      "text-xs mt-1",
+                      msg.payload.value.from === currentUserAddress
+                        ? "text-blue-200"
+                        : "text-gray-500 dark:text-gray-400"
+                    )}>
+                      {formatMessageTime(msg.payload.value.timestamp)}
+                    </p>
+                    {msg.payload.value.from === currentUserAddress && (
+                      <div className="flex space-x-2 mt-2">
+                        <button onClick={() => startEditingMessage(msg)} className="text-yellow-500 hover:text-yellow-700">
+                          <EditOutlined />
+                        </button>
+                        <button onClick={() => deleteMessage(getChatId(currentUserAddress, selectedContact.address), msg.hash)} className="text-red-500 hover:text-red-700">
+                          <DeleteOutlined />
+                        </button>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -377,32 +626,39 @@ const ChatPage = () => {
                 <li
                   key={contact.id}
                   className={cn(
-                    'flex items-center p-2 mb-2 rounded cursor-pointer',
+                    'flex flex-col p-2 mb-2 rounded cursor-pointer relative',
                     selectedContact && selectedContact.id === contact.id
                       ? 'bg-gray-200 dark:bg-gray-700'
                       : 'hover:bg-gray-100 dark:hover:bg-gray-600'
                   )}
-                  onClick={() => {
-                    setSelectedContact(contact);
-                    setSelectedGroup(null);
-                  }}
+                  onClick={() => setSelectedContact(contact)}
                   title={contact.address}
                 >
                   <div className="flex items-center">
-                    <div className="w-8 h-8 rounded-full mr-2 bg-gray-300 flex items-center justify-center">
+                    <div className="w-10 h-10 rounded-full mr-3 bg-gray-300 flex items-center justify-center overflow-hidden">
                       {avatars[contact.address] && (
                         <Image
                           src={avatars[contact.address]}
                           alt={`${contact.address}'s avatar`}
-                          width={24}
-                          height={24}
+                          width={40}
+                          height={40}
                           className="rounded-full"
                         />
                       )}
                     </div>
-                    <span className="truncate">
-                      {contact.name ? `${contact.name} (${formatAddress(contact.address)})` : formatAddress(contact.address)}
-                    </span>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-semibold truncate">
+                        {contact.name ? `${contact.name} (${formatAddress(contact.address)})` : formatAddress(contact.address)}
+                      </div>
+                      <div className="text-sm text-gray-500 dark:text-gray-400 truncate">
+                        {getLastMessage(getChatId(currentUserAddress, contact.address))}
+                      </div>
+                    </div>
+                    {unreadCounts[getChatId(currentUserAddress, contact.address)] > 0 && (
+                      <div className="absolute top-2 right-2 bg-blue-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs">
+                        {unreadCounts[getChatId(currentUserAddress, contact.address)]}
+                      </div>
+                    )}
                   </div>
                 </li>
               ))}
@@ -410,7 +666,7 @@ const ChatPage = () => {
                 <li
                   key={group.id}
                   className={cn(
-                    'flex items-center p-2 mb-2 rounded cursor-pointer',
+                    'flex flex-col p-2 mb-2 rounded cursor-pointer relative',
                     selectedGroup && selectedGroup.id === group.id
                       ? 'bg-gray-200 dark:bg-gray-700'
                       : 'hover:bg-gray-100 dark:hover:bg-gray-600'
@@ -421,10 +677,20 @@ const ChatPage = () => {
                   }}
                 >
                   <div className="flex items-center">
-                    <div className="w-8 h-8 rounded-full mr-2 bg-gray-300 flex items-center justify-center">
-                      <TeamOutlined />
+                    <div className="w-10 h-10 rounded-full mr-3 bg-gray-300 flex items-center justify-center">
+                      <TeamOutlined style={{ fontSize: '1.5rem' }} />
                     </div>
-                    <span className="truncate">{group.name}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-semibold truncate">{group.name}</div>
+                      <div className="text-sm text-gray-500 dark:text-gray-400 truncate">
+                        {getLastMessage(`group_${group.id}`)}
+                      </div>
+                    </div>
+                    {unreadCounts[`group_${group.id}`] > 0 && (
+                      <div className="absolute top-2 right-2 bg-blue-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs">
+                        {unreadCounts[`group_${group.id}`]}
+                      </div>
+                    )}
                   </div>
                 </li>
               ))}
@@ -494,7 +760,7 @@ const ChatPage = () => {
                 <li
                   key={contact.id}
                   className={cn(
-                    'flex items-center p-2 mb-2 rounded cursor-pointer',
+                    'flex flex-col p-2 mb-2 rounded cursor-pointer relative',
                     selectedContact && selectedContact.id === contact.id
                       ? 'bg-gray-200 dark:bg-gray-700'
                       : 'hover:bg-gray-100 dark:hover:bg-gray-600'
@@ -506,20 +772,30 @@ const ChatPage = () => {
                   title={contact.address}
                 >
                   <div className="flex items-center">
-                    <div className="w-8 h-8 rounded-full mr-2 bg-gray-300 flex items-center justify-center">
+                    <div className="w-10 h-10 rounded-full mr-3 bg-gray-300 flex items-center justify-center overflow-hidden">
                       {avatars[contact.address] && (
                         <Image
                           src={avatars[contact.address]}
                           alt={`${contact.address}'s avatar`}
-                          width={24}
-                          height={24}
+                          width={40}
+                          height={40}
                           className="rounded-full"
                         />
                       )}
                     </div>
-                    <span className="truncate">
-                      {contact.name ? `${contact.name} (${formatAddress(contact.address)})` : formatAddress(contact.address)}
-                    </span>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-semibold truncate">
+                        {contact.name ? `${contact.name} (${formatAddress(contact.address)})` : formatAddress(contact.address)}
+                      </div>
+                      <div className="text-sm text-gray-500 dark:text-gray-400 truncate">
+                        {getLastMessage(getChatId(currentUserAddress, contact.address))}
+                      </div>
+                    </div>
+                    {unreadCounts[getChatId(currentUserAddress, contact.address)] > 0 && (
+                      <div className="absolute top-2 right-2 bg-blue-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs">
+                        {unreadCounts[getChatId(currentUserAddress, contact.address)]}
+                      </div>
+                    )}
                   </div>
                 </li>
               ))}
@@ -527,7 +803,7 @@ const ChatPage = () => {
                 <li
                   key={group.id}
                   className={cn(
-                    'flex items-center p-2 mb-2 rounded cursor-pointer',
+                    'flex flex-col p-2 mb-2 rounded cursor-pointer relative',
                     selectedGroup && selectedGroup.id === group.id
                       ? 'bg-gray-200 dark:bg-gray-700'
                       : 'hover:bg-gray-100 dark:hover:bg-gray-600'
@@ -538,10 +814,20 @@ const ChatPage = () => {
                   }}
                 >
                   <div className="flex items-center">
-                    <div className="w-8 h-8 rounded-full mr-2 bg-gray-300 flex items-center justify-center">
-                      <TeamOutlined />
+                    <div className="w-10 h-10 rounded-full mr-3 bg-gray-300 flex items-center justify-center">
+                      <TeamOutlined style={{ fontSize: '1.5rem' }} />
                     </div>
-                    <span className="truncate">{group.name}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-semibold truncate">{group.name}</div>
+                      <div className="text-sm text-gray-500 dark:text-gray-400 truncate">
+                        {getLastMessage(`group_${group.id}`)}
+                      </div>
+                    </div>
+                    {unreadCounts[`group_${group.id}`] > 0 && (
+                      <div className="absolute top-2 right-2 bg-blue-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs">
+                        {unreadCounts[`group_${group.id}`]}
+                      </div>
+                    )}
                   </div>
                 </li>
               ))}
@@ -554,60 +840,151 @@ const ChatPage = () => {
             style={{ userSelect: resizing ? 'none' : 'initial' }}
           ></div>
 
-          <div className="flex-1 flex flex-col h-full">
+          <div className="flex-1 flex flex-col h-full relative">
             <div className="flex-1 overflow-y-auto p-4 border-b border-gray-200 dark:border-gray-800">
-              <h2 className="text-lg font-semibold mb-4">
-                {selectedGroup 
-                  ? `Group: ${selectedGroup.name}`
-                  : selectedContact
-                    ? `Chat with ${formatAddress(selectedContact.address)}`
-                    : 'Select a contact or group'
-                }
+              <h2 className="text-lg font-semibold mb-4 cursor-pointer" onClick={toggleGroupMembers}>
+                {selectedGroup ? `Group: ${selectedGroup.name}` : selectedContact ? `Chat with ${formatAddress(selectedContact.address)}` : 'Select a contact or group'}
               </h2>
-              {selectedGroup && (
-                <div className="mb-4">
-                  <h3 className="text-md font-semibold">Members:</h3>
-                  <ul className="list-disc list-inside">
-                    {selectedGroup.members.map((member) => (
-                      <li key={member}>{formatAddress(member)}</li>
-                    ))}
-                  </ul>
-                  <input
-                    type="text"
-                    className="w-full p-2 mt-2 border border-gray-200 dark:border-gray-800 rounded"
-                    placeholder="Add member (address)"
-                    onKeyPress={(e) => {
-                      if (e.key === 'Enter') {
-                        addMemberToGroup(selectedGroup.id, e.currentTarget.value);
-                        e.currentTarget.value = '';
-                        saveToLocalStorage(); // Сохраняем изменения сразу после добавления участника
-                      }
-                    }}
-                  />
+              
+              {showGroupMembers && selectedGroup && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                  <div 
+                    ref={groupMembersRef}
+                    className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 w-full max-w-2xl max-h-[80vh] overflow-y-auto"
+                  >
+                    <div className="flex justify-between items-center mb-4">
+                      <h3 className="text-xl font-semibold">Group Members: {selectedGroup.name}</h3>
+                      <button onClick={() => setShowGroupMembers(false)} className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
+                        <CloseOutlined style={{ fontSize: '1.5rem' }} />
+                      </button>
+                    </div>
+                    <ul className="list-none p-0 space-y-4">
+                      {selectedGroup.members.map((member) => (
+                        <li key={member} className="flex items-center justify-between">
+                          <div className="flex items-center">
+                            <div className="w-12 h-12 rounded-full mr-4 bg-gray-300 flex items-center justify-center overflow-hidden">
+                              {avatars[member] && (
+                                <Image
+                                  src={avatars[member]}
+                                  alt={`${member}'s avatar`}
+                                  width={48}
+                                  height={48}
+                                  className="rounded-full"
+                                />
+                              )}
+                            </div>
+                            <span className="text-lg">{formatAddress(member)}</span>
+                          </div>
+                          {selectedGroup.creator === currentUserAddress && member !== currentUserAddress && (
+                            <button
+                              onClick={() => removeMemberFromGroup(selectedGroup.id, member)}
+                              className="text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-200"
+                            >
+                              <DeleteOutlined style={{ fontSize: '1.2rem' }} />
+                            </button>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                    {selectedGroup.creator === currentUserAddress && (
+                      <div className="mt-6">
+                        <input
+                          type="text"
+                          className="w-full p-3 border border-gray-200 dark:border-gray-700 rounded-lg"
+                          placeholder="Add member (address)"
+                          onKeyPress={(e) => {
+                            if (e.key === 'Enter') {
+                              addMemberToGroup(selectedGroup.id, e.currentTarget.value);
+                              e.currentTarget.value = '';
+                              saveToLocalStorage();
+                            }
+                          }}
+                        />
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
+
               <div className="mb-4 space-y-4">
-                {(selectedContact || selectedGroup) && messages[getChatId(currentUserAddress, selectedContact?.address || `group_${selectedGroup!.id}`)]?.map((msg, index) => (
-                  <div
-                    key={index}
-                    className={cn(
-                      "max-w-[70%] p-3 rounded-lg",
-                      msg.payload.value.from === currentUserAddress
-                        ? "ml-auto bg-blue-500 text-white"
-                        : "mr-auto bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white"
-                    )}
-                  >
-                    <p>{msg.payload.value.text}</p>
-                    <p className={cn(
-                      "text-xs mt-1",
-                      msg.payload.value.from === currentUserAddress
-                        ? "text-blue-200"
-                        : "text-gray-500 dark:text-gray-400"
-                    )}>
-                      {formatMessageTime(msg.payload.value.timestamp)}
-                    </p>
-                  </div>
-                ))}
+                {(selectedContact || selectedGroup) && messages[getChatId(currentUserAddress, selectedContact?.address || `group_${selectedGroup!.id}`)]?.map((msg, index) => {
+                  const chatId = getChatId(currentUserAddress, selectedContact?.address || `group_${selectedGroup!.id}`);
+                  const isCurrentUser = msg.payload.value.from === currentUserAddress;
+                  return (
+                    <div
+                      key={index}
+                      className={cn(
+                        "flex items-end",
+                        isCurrentUser ? "justify-end" : "justify-start"
+                      )}
+                    >
+                      {!isCurrentUser && (
+                        <div className="w-8 h-8 rounded-full mr-2 bg-gray-300 flex-shrink-0">
+                          {avatars[msg.payload.value.from] && (
+                            <Image
+                              src={avatars[msg.payload.value.from]}
+                              alt={`${msg.payload.value.from}'s avatar`}
+                              width={32}
+                              height={32}
+                              className="rounded-full"
+                            />
+                          )}
+                        </div>
+                      )}
+                      <div className={cn("relative group max-w-[70%]")}>
+                        {isCurrentUser && (
+                          <div className="absolute -top-5 right-2 flex space-x-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                            <button 
+                              onClick={() => startEditingMessage(msg)} 
+                              className="bg-white text-blue-500 rounded-md p-1.5 shadow-md transition duration-200 border border-blue-500 hover:bg-blue-100"
+                            >
+                              <EditOutlined style={{ fontSize: '14px' }} />
+                            </button>
+                            <button 
+                              onClick={() => deleteMessage(chatId, msg.hash)} 
+                              className="bg-white text-red-500 rounded-md p-1.5 shadow-md transition duration-200 border border-red-500 hover:bg-red-100"
+                            >
+                              <DeleteOutlined style={{ fontSize: '14px' }} />
+                            </button>
+                          </div>
+                        )}
+                        <div
+                          className={cn(
+                            "p-3 rounded-lg",
+                            isCurrentUser
+                              ? "bg-blue-500 text-white"
+                              : "bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white",
+                            "break-words min-w-[120px]"
+                          )}
+                          style={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}
+                        >
+                          <p>{msg.payload.value.text}</p>
+                          <p className={cn(
+                            "text-xs mt-1",
+                            isCurrentUser
+                              ? "text-blue-200"
+                              : "text-gray-500 dark:text-gray-400"
+                          )}>
+                            {formatMessageTime(msg.payload.value.timestamp)}
+                          </p>
+                        </div>
+                      </div>
+                      {isCurrentUser && (
+                        <div className="w-8 h-8 rounded-full ml-2 bg-gray-300 flex-shrink-0">
+                          {avatars[currentUserAddress] && (
+                            <Image
+                              src={avatars[currentUserAddress]}
+                              alt="Your avatar"
+                              width={32}
+                              height={32}
+                              className="rounded-full"
+                            />
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
 
@@ -616,7 +993,7 @@ const ChatPage = () => {
               <input
                 type="text"
                 className="flex-1 p-2 border border-gray-200 dark:border-gray-800 rounded-l-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Type your message here..."
+                placeholder={editingMessage ? "Edit your message..." : "Type your message here..."}
                 value={inputMessage}
                 onChange={(e) => setInputMessage(e.target.value)}
                 onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
@@ -625,8 +1002,19 @@ const ChatPage = () => {
                 className="ml-2 bg-blue-500 hover:bg-blue-600 text-white rounded-r-lg" 
                 onClick={sendMessage}
               >
-                Send
+                {editingMessage ? 'Save Edit' : 'Send'}
               </Button>
+              {editingMessage && (
+                <Button 
+                  className="ml-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg" 
+                  onClick={() => {
+                    setEditingMessage(null);
+                    setInputMessage('');
+                  }}
+                >
+                  Cancel Edit
+                </Button>
+              )}
             </div>
           </div>
         </>
