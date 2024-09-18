@@ -17,16 +17,16 @@
 // Возможность пересылки локации
 // Возможность пересылки аудио
 // Возможность пересылки видео
-// Возможность отввечат на сообщения
+// Возможнсть отввечат на сообщения
 
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Button from '@/components/ui/button';
 import cn from '@/utils/cn';
 import { PlusCircleOutlined, PaperClipOutlined, TeamOutlined, ArrowLeftOutlined, CloseOutlined, DeleteOutlined, EditOutlined, CheckOutlined } from '@ant-design/icons';
 import blockies from 'ethereum-blockies';
-import { initOrbitDB, addMessage, getMessages } from '@/services/chatService';
+import { initOrbitDB, getMessages, addMessage, editMessage as editMessageInOrbit, deleteMessage as deleteMessageFromOrbit, getChatId, addUser, getUsers, updateUnreadCount, getUnreadCounts, addGroup, getGroups, updateGroup, removeMemberFromGroup, saveUserContacts, getUserContacts } from '@/services/chatService';
 import { useAccount } from 'wagmi';
 import Image from 'next/image';
 import { format, isToday, isYesterday } from 'date-fns';
@@ -86,10 +86,20 @@ const ChatPage = () => {
   const [editedContactName, setEditedContactName] = useState('');
 
   useEffect(() => {
-    initOrbitDB().catch(console.error);
+    const initDB = async () => {
+      await initOrbitDB();
+      console.log('OrbitDB initialized');
+      if (address) {
+        await loadUserContacts(address);
+      }
+      const unreadCounts = await getUnreadCounts(address);
+      setUnreadCounts(unreadCounts);
+      const groups = await getGroups();
+      setGroups(groups);
+    };
+    initDB();
     if (address) {
       setCurrentUserAddress(address);
-      loadFromLocalStorage(address);
     } else {
       // Очистка данных, если кошелек не подключен
       setContactList([]);
@@ -106,23 +116,49 @@ const ChatPage = () => {
     return () => window.removeEventListener('resize', handleResize);
   }, [address]);
 
+  const loadUserContacts = async (userAddress: string) => {
+    try {
+      const userContacts = await getUserContacts(userAddress);
+      const users = await getUsers();
+      const contacts = userContacts.map(contactAddress => ({
+        id: contactAddress,
+        address: contactAddress,
+        name: users[contactAddress]?.name || '',
+        unreadCount: 0
+      }));
+      setContactList(contacts);
+      console.log('User contacts loaded:', contacts);
+    } catch (error) {
+      console.error('Failed to load user contacts:', error);
+    }
+  };
+
+  const addNewContact = async () => {
+    if (newContactAddress) {
+      try {
+        await addUser(newContactAddress, newContactName);
+        const newContact = {
+          id: newContactAddress,
+          address: newContactAddress,
+          name: newContactName,
+          unreadCount: 0
+        };
+        setContactList(prevList => [...prevList, newContact]);
+        await saveUserContacts(currentUserAddress, [...contactList.map(c => c.address), newContactAddress]);
+        setNewContactAddress('');
+        setNewContactName('');
+        setShowInput(false);
+      } catch (error) {
+        console.error('Failed to add new contact:', error);
+      }
+    }
+  };
+
   useEffect(() => {
     if (selectedContact || selectedGroup) {
       fetchMessages();
     }
   }, [selectedContact, selectedGroup]);
-
-  useEffect(() => {
-    if (currentUserAddress) {
-      const dataToSave = {
-        messages,
-        contactList,
-        groups,
-        unreadCounts
-      };
-      localStorage.setItem(`chatData_${currentUserAddress}`, JSON.stringify(dataToSave));
-    }
-  }, [messages, contactList, groups, unreadCounts, currentUserAddress]);
 
   useEffect(() => {
     const newAvatars: { [key: string]: string } = {};
@@ -159,118 +195,66 @@ const ChatPage = () => {
     setShowGroupMembers(!showGroupMembers);
   };
 
-  const loadFromLocalStorage = (userAddress: string) => {
-    const savedData = localStorage.getItem(`chatData_${userAddress}`);
-    if (savedData) {
-      const { messages: savedMessages, selectedContact: savedSelectedContact, contactList: savedContactList, groups: savedGroups, unreadCounts: savedUnreadCounts } = JSON.parse(savedData);
-      if (Array.isArray(savedContactList)) {
-        setContactList(savedContactList);
-      }
-      if (Array.isArray(savedGroups)) {
-        setGroups(savedGroups);
-      }
-      console.log(`Loaded messages from localStorage for ${userAddress}:`, savedMessages);
-      setMessages(savedMessages || {});
-      setSelectedContact(savedSelectedContact || null);
-      setUnreadCounts(savedUnreadCounts || {});
-    } else {
-      setContactList([]);
-      setGroups([]);
-      setSelectedContact(null);
-      setMessages({});
-      setUnreadCounts({});
-    }
-  };
-
   const fetchMessages = async () => {
-    if (selectedContact) {
+    if (selectedContact || selectedGroup) {
+      const chatId = getChatId(currentUserAddress, selectedContact?.address || `group_${selectedGroup!.id}`);
       try {
-        const chatId = getChatId(currentUserAddress, selectedContact.address);
         const fetchedMessages = await getMessages(chatId);
+        console.log('Fetched messages:', JSON.stringify(fetchedMessages, null, 2));
         setMessages(prevMessages => {
-          const existingMessages = prevMessages[chatId] || [];
-          const newMessages = fetchedMessages.filter(fetchedMsg => 
-            !existingMessages.some(existingMsg => existingMsg.hash === fetchedMsg.hash)
-          );
-          console.log(`Existing messages for ${chatId}:`, existingMessages);
-          console.log(`New messages for ${chatId}:`, newMessages);
-          return {
+          const updatedMessages = {
             ...prevMessages,
-            [chatId]: [...existingMessages, ...newMessages]
+            [chatId]: fetchedMessages.map((msg: any) => ({
+              ...msg,
+              payload: {
+                value: {
+                  ...msg.payload.value,
+                  from: msg.payload.value.from,
+                  text: msg.payload.value.text || '',
+                  timestamp: msg.payload.value.timestamp || Date.now()
+                }
+              }
+            }))
           };
+          console.log('Updated messages state:', JSON.stringify(updatedMessages, null, 2));
+          return updatedMessages;
         });
       } catch (error) {
         console.error('Failed to fetch messages:', error);
       }
-    } else if (selectedGroup) {
-      try {
-        const chatId = `group_${selectedGroup.id}`;
-        const fetchedMessages = await getMessages(chatId);
-        setMessages(prevMessages => {
-          const existingMessages = prevMessages[chatId] || [];
-          const newMessages = fetchedMessages.filter(fetchedMsg => 
-            !existingMessages.some(existingMsg => existingMsg.hash === fetchedMsg.hash)
-          );
-          console.log(`Existing messages for ${chatId}:`, existingMessages);
-          console.log(`New messages for ${chatId}:`, newMessages);
-          return {
-            ...prevMessages,
-            [chatId]: [...existingMessages, ...newMessages]
-          };
-        });
-      } catch (error) {
-        console.error('Failed to fetch group messages:', error);
-      }
     }
   };
   
-  const sendMessage = () => {
+  const sendMessage = async () => {
     if (inputMessage.trim()) {
       const chatId = getChatId(currentUserAddress, selectedContact?.address || `group_${selectedGroup!.id}`);
-      if (editingMessage) {
-        // Если редактируем сообщение
+      const newMessage = {
+        from: currentUserAddress,
+        to: selectedContact?.address || `group_${selectedGroup!.id}`,
+        text: inputMessage.trim(),
+        timestamp: Date.now()
+      };
+      try {
+        console.log('Sending message:', JSON.stringify(newMessage, null, 2));
+        const messageHash = await addMessage(chatId, newMessage);
+        console.log('Message sent, hash:', messageHash);
         setMessages(prevMessages => {
-          const updatedMessages = prevMessages[chatId].map(msg =>
-            msg.hash === editingMessage.hash
-              ? { ...msg, payload: { ...msg.payload, value: { ...msg.payload.value, text: inputMessage.trim() } } }
-              : msg
-          );
-          // Сохраняем обновленные сообщения в localStorage
-          const chatData = JSON.parse(localStorage.getItem(`chatData_${currentUserAddress}`) || '{}');
-          chatData.messages[chatId] = updatedMessages;
-          localStorage.setItem(`chatData_${currentUserAddress}`, JSON.stringify(chatData));
-          return {
+          const updatedMessages = {
             ...prevMessages,
-            [chatId]: updatedMessages
+            [chatId]: [...(prevMessages[chatId] || []), { hash: messageHash, payload: { value: newMessage } }]
           };
+          console.log('Updated messages after sending:', JSON.stringify(updatedMessages[chatId], null, 2));
+          return updatedMessages;
         });
-        setEditingMessage(null);
-      } else {
-        // Если отправляем новое сообщение
-        const newMessage = {
-          hash: generateUniqueId(), // Функция для генерации уникального ID
-          payload: {
-            value: {
-              from: currentUserAddress,
-              to: selectedContact?.address || `group_${selectedGroup!.id}`,
-              timestamp: Date.now(),
-              text: inputMessage.trim(),
-            }
-          }
-        };
-        setMessages(prevMessages => {
-          const updatedMessages = [...(prevMessages[chatId] || []), newMessage];
-          // Сохраняем обновленные сообщения в localStorage
-          const chatData = JSON.parse(localStorage.getItem(`chatData_${currentUserAddress}`) || '{}');
-          chatData.messages[chatId] = updatedMessages;
-          localStorage.setItem(`chatData_${currentUserAddress}`, JSON.stringify(chatData));
-          return {
-            ...prevMessages,
-            [chatId]: updatedMessages
-          };
-        });
+        if (selectedContact && !contactList.some(c => c.address === selectedContact.address)) {
+          const updatedContacts = [...contactList, selectedContact];
+          setContactList(updatedContacts);
+          await saveUserContacts(currentUserAddress, updatedContacts.map(c => c.address));
+        }
+        setInputMessage('');
+      } catch (error) {
+        console.error('Failed to send message:', error);
       }
-      setInputMessage('');
     }
   };
 
@@ -324,21 +308,6 @@ const ChatPage = () => {
       markAsRead(chatId);
     }
   }, [selectedContact, selectedGroup]);
-
-  const addNewContact = () => {
-    if (newContactAddress) {
-      const newContact: Contact = {
-        id: Date.now().toString(),
-        address: newContactAddress,
-        name: newContactName,
-        unreadCount: 0
-      };
-      setContactList(prevList => [...prevList, newContact]);
-      setNewContactAddress('');
-      setNewContactName('');
-      setShowInput(false);
-    }
-  };
 
   const handleMouseDown = (e: React.MouseEvent) => {
     if (!isMobile) {
@@ -433,43 +402,86 @@ const ChatPage = () => {
 
   const formatMessageTime = (timestamp: number) => {
     const date = new Date(timestamp);
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  };
-
-  const getChatId = (address1: string, address2: string) => {
-    if (address2.startsWith('group_')) {
-      return address2;
+    if (isNaN(date.getTime())) {
+      return '';
     }
-    return [address1, address2].sort().join('_');
+    if (isToday(date)) {
+      return format(date, 'HH:mm');
+    }
+    if (isYesterday(date)) {
+      return 'Yesterday';
+    }
+    return format(date, 'dd.MM.yyyy');
   };
 
-  const getLastMessage = (chatId: string) => {
+  const getLastMessagePreview = (chatId: string) => {
     const chatMessages = messages[chatId];
     if (chatMessages && chatMessages.length > 0) {
       const lastMessage = chatMessages[chatMessages.length - 1];
-      const text = lastMessage.payload.value.text;
-      return text.length > 20 ? text.substring(0, 20) + '...' : text;
+      if (lastMessage && lastMessage.payload && lastMessage.payload.value) {
+        const { text } = lastMessage.payload.value;
+        
+        if (typeof text === 'string' && text.trim() !== '') {
+          return text.length > 20 ? text.substring(0, 20) + '...' : text;
+        }
+      }
     }
-    return '';
+    return ''; // Возвращаем пусту строку, если нет сообщений или текст последнего сообщения пуст
   };
 
-  const startEditingMessage = (msg: Message) => {
+  const handleEditMessage = (msg: any) => {
+    console.log('Editing message:', msg);
     setEditingMessage(msg);
+    setEditedMessageText(msg.payload.value.text);
     setInputMessage(msg.payload.value.text);
   };
 
-  const deleteMessage = (chatId: string, messageHash: string) => {
-    setMessages(prevMessages => {
-      const updatedMessages = prevMessages[chatId].filter(msg => msg.hash !== messageHash);
-      // Сохраняем обновленные сообщения в localStorage
-      const chatData = JSON.parse(localStorage.getItem(`chatData_${currentUserAddress}`) || '{}');
-      chatData.messages[chatId] = updatedMessages;
-      localStorage.setItem(`chatData_${currentUserAddress}`, JSON.stringify(chatData));
-      return {
-        ...prevMessages,
-        [chatId]: updatedMessages
-      };
-    });
+  const handleSaveEdit = async () => {
+    if (editingMessage && inputMessage.trim()) {
+      const chatId = getChatId(currentUserAddress, editingMessage.payload.value.to);
+      try {
+        console.log('Saving edited message:', inputMessage.trim());
+        await editMessageInOrbit(chatId, editingMessage.hash, inputMessage.trim());
+        console.log('Message edited successfully');
+        setMessages((prevMessages) => {
+          const updatedMessages = prevMessages[chatId].map((msg) =>
+            msg.hash === editingMessage.hash
+              ? { ...msg, payload: { ...msg.payload, value: { ...msg.payload.value, text: inputMessage.trim() } } }
+              : msg
+          );
+          return {
+            ...prevMessages,
+            [chatId]: updatedMessages
+          };
+        });
+        setEditingMessage(null);
+        setEditedMessageText('');
+        setInputMessage('');
+      } catch (error) {
+        console.error('Failed to edit message:', error);
+      }
+    }
+  };
+
+  const handleDeleteMessage = async (chatId: string, messageHash: string) => {
+    try {
+      console.log('Deleting message:', { chatId, messageHash });
+      const result = await deleteMessageFromOrbit(chatId, messageHash);
+      console.log('Delete result:', result);
+      if (result.success) {
+        setMessages((prevMessages) => {
+          const updatedMessages = {
+            ...prevMessages,
+            [chatId]: prevMessages[chatId].filter((msg) => msg.hash !== messageHash)
+          };
+          return updatedMessages;
+        });
+      } else {
+        console.error('Failed to delete message:', result.message);
+      }
+    } catch (error) {
+      console.error('Error deleting message:', error);
+    }
   };
 
   const deleteContact = (contactId: string) => {
@@ -529,14 +541,16 @@ const ChatPage = () => {
             </div>
             <div className="flex-1 overflow-y-auto p-4 border-b border-gray-200 dark:border-gray-800">
               <div className="mb-4">
-                {messages[getChatId(currentUserAddress, selectedContact.address)]?.filter(msg => !msg.payload.value.deleted).map((msg, index) => (
+                {messages[getChatId(currentUserAddress, selectedContact.address)]?.map((msg, index) => (
                   <div key={index} className={cn(
                     "p-3 rounded-lg max-w-[40%]",
                     msg.payload.value.from === currentUserAddress
                       ? "bg-blue-500 text-white ml-auto"
                       : "bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white"
                   )}>
-                    <p className="break-words">{msg.payload.value.text}</p>
+                    <p className="break-words">
+                      {msg.payload.value.text || 'No text'}
+                    </p>
                     <p className={cn(
                       "text-xs mt-1",
                       msg.payload.value.from === currentUserAddress
@@ -545,12 +559,15 @@ const ChatPage = () => {
                     )}>
                       {formatMessageTime(msg.payload.value.timestamp)}
                     </p>
+                    <p className="text-xs mt-1">
+                      From: {msg.payload.value.from === currentUserAddress ? 'Me' : 'Other'}
+                    </p>
                     {msg.payload.value.from === currentUserAddress && (
                       <div className="flex space-x-2 mt-2">
-                        <button onClick={() => startEditingMessage(msg)} className="text-yellow-500 hover:text-yellow-700">
+                        <button onClick={() => handleEditMessage(msg)} className="text-yellow-500 hover:text-yellow-700">
                           <EditOutlined />
                         </button>
-                        <button onClick={() => deleteMessage(getChatId(currentUserAddress, selectedContact.address), msg.hash)} className="text-red-500 hover:text-red-700">
+                        <button onClick={() => handleDeleteMessage(getChatId(currentUserAddress, selectedContact.address), msg.hash)} className="text-red-500 hover:text-red-700">
                           <DeleteOutlined />
                         </button>
                       </div>
@@ -570,7 +587,9 @@ const ChatPage = () => {
                 onChange={(e) => setInputMessage(e.target.value)}
                 onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
               />
-              <Button className="ml-2" onClick={sendMessage}>Send</Button>
+              <Button className="ml-2" onClick={editingMessage ? handleSaveEdit : sendMessage}>
+                {editingMessage ? 'Save Edit' : 'Send'}
+              </Button>
             </div>
           </div>
         ) : (
@@ -651,7 +670,7 @@ const ChatPage = () => {
                         {contact.name ? `${contact.name} (${formatAddress(contact.address)})` : formatAddress(contact.address)}
                       </div>
                       <div className="text-sm text-gray-500 dark:text-gray-400 truncate">
-                        {getLastMessage(getChatId(currentUserAddress, contact.address))}
+                        {getLastMessagePreview(getChatId(currentUserAddress, contact.address))}
                       </div>
                     </div>
                     {unreadCounts[getChatId(currentUserAddress, contact.address)] > 0 && (
@@ -683,7 +702,7 @@ const ChatPage = () => {
                     <div className="flex-1 min-w-0">
                       <div className="font-semibold truncate">{group.name}</div>
                       <div className="text-sm text-gray-500 dark:text-gray-400 truncate">
-                        {getLastMessage(`group_${group.id}`)}
+                        {getLastMessagePreview(`group_${group.id}`)}
                       </div>
                     </div>
                     {unreadCounts[`group_${group.id}`] > 0 && (
@@ -788,7 +807,7 @@ const ChatPage = () => {
                         {contact.name ? `${contact.name} (${formatAddress(contact.address)})` : formatAddress(contact.address)}
                       </div>
                       <div className="text-sm text-gray-500 dark:text-gray-400 truncate">
-                        {getLastMessage(getChatId(currentUserAddress, contact.address))}
+                        {getLastMessagePreview(getChatId(currentUserAddress, contact.address))}
                       </div>
                     </div>
                     {unreadCounts[getChatId(currentUserAddress, contact.address)] > 0 && (
@@ -820,7 +839,7 @@ const ChatPage = () => {
                     <div className="flex-1 min-w-0">
                       <div className="font-semibold truncate">{group.name}</div>
                       <div className="text-sm text-gray-500 dark:text-gray-400 truncate">
-                        {getLastMessage(`group_${group.id}`)}
+                        {getLastMessagePreview(`group_${group.id}`)}
                       </div>
                     </div>
                     {unreadCounts[`group_${group.id}`] > 0 && (
@@ -935,13 +954,13 @@ const ChatPage = () => {
                         {isCurrentUser && (
                           <div className="absolute -top-5 right-2 flex space-x-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
                             <button 
-                              onClick={() => startEditingMessage(msg)} 
+                              onClick={() => handleEditMessage(msg)} 
                               className="bg-white text-blue-500 rounded-md p-1.5 shadow-md transition duration-200 border border-blue-500 hover:bg-blue-100"
                             >
                               <EditOutlined style={{ fontSize: '14px' }} />
                             </button>
                             <button 
-                              onClick={() => deleteMessage(chatId, msg.hash)} 
+                              onClick={() => handleDeleteMessage(chatId, msg.hash)} 
                               className="bg-white text-red-500 rounded-md p-1.5 shadow-md transition duration-200 border border-red-500 hover:bg-red-100"
                             >
                               <DeleteOutlined style={{ fontSize: '14px' }} />
@@ -996,11 +1015,11 @@ const ChatPage = () => {
                 placeholder={editingMessage ? "Edit your message..." : "Type your message here..."}
                 value={inputMessage}
                 onChange={(e) => setInputMessage(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
+                onKeyPress={(e) => e.key === 'Enter' && (editingMessage ? handleSaveEdit() : sendMessage())}
               />
               <Button 
                 className="ml-2 bg-blue-500 hover:bg-blue-600 text-white rounded-r-lg" 
-                onClick={sendMessage}
+                onClick={editingMessage ? handleSaveEdit : sendMessage}
               >
                 {editingMessage ? 'Save Edit' : 'Send'}
               </Button>
