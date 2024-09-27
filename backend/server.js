@@ -35,6 +35,13 @@ app.post('/api/message', async (req, res) => {
     console.log('Adding message to chat:', chatId);
     const hash = await addMessage(chatId, message);
     console.log('Message added successfully, hash:', hash);
+
+    // Обновляем контакты получателя
+    const recipientContacts = await getUserContacts(message.to);
+    if (!recipientContacts.includes(message.from)) {
+      await saveUserContacts(message.to, [...recipientContacts, message.from]);
+    }
+
     res.json({ hash });
   } catch (error) {
     console.error('Failed to add message:', error);

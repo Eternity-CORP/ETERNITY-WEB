@@ -246,12 +246,18 @@ const ChatPage = () => {
           console.log('Updated messages after sending:', JSON.stringify(updatedMessages[chatId], null, 2));
           return updatedMessages;
         });
-        if (selectedContact && !contactList.some(c => c.address === selectedContact.address)) {
-          const updatedContacts = [...contactList, selectedContact];
-          setContactList(updatedContacts);
-          await saveUserContacts(currentUserAddress, updatedContacts.map(c => c.address));
-        }
         setInputMessage('');
+
+        // Обновляем список контактов после отправки сообщения
+        const updatedContacts = await getUserContacts(currentUserAddress);
+        const users = await getUsers();
+        const newContactList = updatedContacts.map(address => ({
+          id: address,
+          address,
+          name: users[address]?.name || '',
+          unreadCount: 0
+        }));
+        setContactList(newContactList);
       } catch (error) {
         console.error('Failed to send message:', error);
       }

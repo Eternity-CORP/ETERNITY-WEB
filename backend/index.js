@@ -45,7 +45,21 @@ export async function addMessage(chatId, message) {
   };
   const hash = await db.add(JSON.stringify(messageToSave));
   console.log('Message added with hash:', hash);
+
+  // Добавляем отправителя в контакты получателя
+  await addContactForUser(message.to, message.from);
+
   return hash;
+}
+
+// Новая функция для добавления контакта
+async function addContactForUser(userAddress, contactAddress) {
+  let contacts = await userContactsDB.get(userAddress) || [];
+  if (!contacts.includes(contactAddress)) {
+    contacts.push(contactAddress);
+    await userContactsDB.put(userAddress, contacts);
+    console.log(`Added ${contactAddress} to ${userAddress}'s contacts`);
+  }
 }
 
 export async function getMessages(chatId) {
