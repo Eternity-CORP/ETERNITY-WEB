@@ -1,35 +1,15 @@
-//TODO
-// Возможность отправки фото\видео, гс
-// Роли\права для участников группы
-// Возможность удаления сообщений
-// Возможность редактирования сообщений
-// Возможность удаления группы
-// Возможность редактирования группы
-// Возможность удаления контакта
-// Возможность редактирования контакта
-// Возможность удаления сообщений
-// Возможность пересылки сообщений
-// Возможность пересылки файлов
-// Возможность пересылки фото\видео
-// Возможность пересылки документов
-// Возможность пересылки ссылок
-// Возможность пересылки контактов
-// Возможность пересылки локации
-// Возможность пересылки аудио
-// Возможность пересылки видео
-// Возможнсть отввечат на сообщения
-
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Button from '@/components/ui/button';
 import cn from '@/utils/cn';
-import { PlusCircleOutlined, PaperClipOutlined, TeamOutlined, ArrowLeftOutlined, CloseOutlined, DeleteOutlined, EditOutlined, CheckOutlined } from '@ant-design/icons';
+import { PlusCircleOutlined, PaperClipOutlined, TeamOutlined, ArrowLeftOutlined, CloseOutlined, DeleteOutlined, EditOutlined, CheckOutlined, PictureOutlined } from '@ant-design/icons';
 import blockies from 'ethereum-blockies';
 import { initOrbitDB, getMessages, addMessage, editMessage as editMessageInOrbit, deleteMessage as deleteMessageFromOrbit, getChatId, addUser, getUsers, updateUnreadCount, getUnreadCounts, addGroup, getGroups, updateGroup, removeMemberFromGroup, saveUserContacts, getUserContacts } from '@/services/chatService';
 import { useAccount } from 'wagmi';
 import Image from 'next/image';
 import { format, isToday, isYesterday } from 'date-fns';
+import 'react-image-lightbox/style.css'; // This only needs to be imported once in your app
 
 type Contact = {
   id: string;
@@ -58,6 +38,42 @@ type Message = {
   }
 };
 
+const ImageViewer = ({ images, currentIndex, onClose, onNext, onPrev }: { 
+  images: string[]; 
+  currentIndex: 
+  number; 
+  onClose: () => void; 
+  onNext: () => void; 
+  onPrev: () => void }
+) => {
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'ArrowRight') {
+        onNext();
+      } else if (event.key === 'ArrowLeft') {
+        onPrev();
+      } else if (event.key === 'Escape') {
+        onClose();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [onNext, onPrev, onClose]);
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
+      <button onClick={onClose} className="absolute top-4 right-4 text-white text-2xl">&times;</button>
+      <button onClick={onPrev} className="absolute left-4 text-white text-4xl">&lt;</button>
+      <img src={images[currentIndex]} alt="Full size" className="max-h-[90vh] max-w-[90vw] object-contain" />
+      <button onClick={onNext} className="absolute right-4 text-white text-4xl">&gt;</button>
+    </div>
+  );
+};
+
 const ChatPage = () => {
   const [contactList, setContactList] = useState<Contact[]>([]);
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
@@ -84,6 +100,10 @@ const ChatPage = () => {
   const [editedMessageText, setEditedMessageText] = useState('');
   const [editingContact, setEditingContact] = useState<Contact | null>(null);
   const [editedContactName, setEditedContactName] = useState('');
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [viewerOpen, setViewerOpen] = useState(false);
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [currentImages, setCurrentImages] = useState<string[]>([]);
 
   useEffect(() => {
     const initDB = async () => {
@@ -120,7 +140,7 @@ const ChatPage = () => {
     try {
       const userContacts = await getUserContacts(userAddress);
       const users = await getUsers();
-      const contacts = userContacts.map(contactAddress => ({
+      const contacts = userContacts.map((contactAddress: string) => ({
         id: contactAddress,
         address: contactAddress,
         name: users[contactAddress]?.name || '',
@@ -225,15 +245,55 @@ const ChatPage = () => {
     }
   };
   
+  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files || []);
+    const imageFiles = files.filter(file => file.type.startsWith('image/'));
+    if (imageFiles.length > 10) {
+      alert('You can only upload up to 10 images at once');
+      return;
+    }
+    setSelectedFiles(prevFiles => [...prevFiles, ...imageFiles].slice(0, 10));
+  };
+
+  const removeSelectedFile = (index: number) => {
+    setSelectedFiles(prevFiles => prevFiles.filter((_, i) => i !== index));
+  };
+
   const sendMessage = async () => {
-    if (inputMessage.trim()) {
+    if (inputMessage.trim() || selectedFiles.length > 0) {
       const chatId = getChatId(currentUserAddress, selectedContact?.address || `group_${selectedGroup!.id}`);
+      let imageUrls: string[] = [];
+      
+      if (selectedFiles.length > 0) {
+        const formData = new FormData();
+        selectedFiles.forEach((file, index) => {
+          formData.append('files', file);
+        });
+        try {
+          const uploadResponse = await fetch('http://localhost:3001/api/upload-multiple', {
+            method: 'POST',
+            body: formData,
+          });
+          if (!uploadResponse.ok) {
+            throw new Error('Upload failed');
+          }
+          const uploadResult = await uploadResponse.json();
+          imageUrls = uploadResult.urls;
+        } catch (error) {
+          console.error('Failed to upload images:', error);
+          alert('Failed to upload images. Please try again.');
+          return;
+        }
+      }
+
       const newMessage = {
         from: currentUserAddress,
         to: selectedContact?.address || `group_${selectedGroup!.id}`,
         text: inputMessage.trim(),
-        timestamp: Date.now()
+        timestamp: Date.now(),
+        imageUrls: imageUrls,
       };
+
       try {
         console.log('Sending message:', JSON.stringify(newMessage, null, 2));
         const messageHash = await addMessage(chatId, newMessage);
@@ -247,6 +307,7 @@ const ChatPage = () => {
           return updatedMessages;
         });
         setInputMessage('');
+        setSelectedFiles([]);
 
         // Обновляем список контактов после отправки сообщения
         const updatedContacts = await getUserContacts(currentUserAddress);
@@ -531,6 +592,24 @@ const ChatPage = () => {
       localStorage.setItem(`chatData_${currentUserAddress}`, JSON.stringify(dataToSave));
     }
   };
+
+  const openImageViewer = useCallback((images: string[], index: number) => {
+    setCurrentImages(images);
+    setCurrentImageIndex(index);
+    setViewerOpen(true);
+  }, []);
+
+  const closeImageViewer = useCallback(() => {
+    setViewerOpen(false);
+  }, []);
+
+  const nextImage = useCallback(() => {
+    setCurrentImageIndex((prevIndex) => (prevIndex + 1) % currentImages.length);
+  }, [currentImages]);
+
+  const prevImage = useCallback(() => {
+    setCurrentImageIndex((prevIndex) => (prevIndex - 1 + currentImages.length) % currentImages.length);
+  }, [currentImages]);
 
   return (
     <div className="h-screen overflow-hidden flex" onMouseMove={handleMouseMove} onMouseUp={handleMouseUp}>
@@ -921,7 +1000,6 @@ const ChatPage = () => {
                             if (e.key === 'Enter') {
                               addMemberToGroup(selectedGroup.id, e.currentTarget.value);
                               e.currentTarget.value = '';
-                              saveToLocalStorage();
                             }
                           }}
                         />
@@ -983,6 +1061,24 @@ const ChatPage = () => {
                           )}
                           style={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}
                         >
+                          {msg.payload.value.imageUrls && msg.payload.value.imageUrls.length > 0 && (
+                            <div className={`mb-2 grid gap-2 ${
+                              msg.payload.value.imageUrls.length === 1 ? 'grid-cols-1' :
+                              msg.payload.value.imageUrls.length === 2 ? 'grid-cols-2' :
+                              msg.payload.value.imageUrls.length === 3 ? 'grid-cols-3' :
+                              msg.payload.value.imageUrls.length === 4 ? 'grid-cols-2' : 'grid-cols-3'
+                            }`}>
+                              {msg.payload.value.imageUrls.map((url: string, imgIndex: number) => (
+                                <img
+                                  key={imgIndex}
+                                  src={url}
+                                  alt={`Uploaded image ${imgIndex + 1}`}
+                                  className="w-full h-auto object-cover rounded-lg cursor-pointer"
+                                  onClick={() => openImageViewer(msg.payload.value.imageUrls!, imgIndex)}
+                                />
+                              ))}
+                            </div>
+                          )}
                           <p>{msg.payload.value.text}</p>
                           <p className={cn(
                             "text-xs mt-1",
@@ -1013,36 +1109,67 @@ const ChatPage = () => {
               </div>
             </div>
 
-            <div className="p-4 flex items-center">
-              <PaperClipOutlined className="mr-2 text-gray-500" />
-              <input
-                type="text"
-                className="flex-1 p-2 border border-gray-200 dark:border-gray-800 rounded-l-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder={editingMessage ? "Edit your message..." : "Type your message here..."}
-                value={inputMessage}
-                onChange={(e) => setInputMessage(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && (editingMessage ? handleSaveEdit() : sendMessage())}
-              />
-              <Button 
-                className="ml-2 bg-blue-500 hover:bg-blue-600 text-white rounded-r-lg" 
-                onClick={editingMessage ? handleSaveEdit : sendMessage}
-              >
-                {editingMessage ? 'Save Edit' : 'Send'}
-              </Button>
-              {editingMessage && (
-                <Button 
-                  className="ml-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg" 
-                  onClick={() => {
-                    setEditingMessage(null);
-                    setInputMessage('');
-                  }}
-                >
-                  Cancel Edit
-                </Button>
+            <div className="p-4 flex flex-col">
+              {selectedFiles.length > 0 && (
+                <div className="mb-2 flex flex-wrap gap-2">
+                  {selectedFiles.map((file, index) => (
+                    <div key={index} className="relative">
+                      <img
+                        src={URL.createObjectURL(file)}
+                        alt={`Selected file ${index + 1}`}
+                        className="w-20 h-20 object-cover rounded"
+                      />
+                      <button
+                        onClick={() => removeSelectedFile(index)}
+                        className="absolute top-0 right-0 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center"
+                      >
+                        <CloseOutlined style={{ fontSize: '10px' }} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
               )}
+              <div className="flex items-center">
+                <label htmlFor="file-upload" className="cursor-pointer">
+                  <PictureOutlined className="mr-2 text-gray-500" />
+                </label>
+                <input
+                  id="file-upload"
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  className="hidden"
+                  onChange={handleFileSelect}
+                />
+                <PaperClipOutlined className="mr-2 text-gray-500" />
+                <input
+                  type="text"
+                  className="flex-1 p-2 border border-gray-200 dark:border-gray-800 rounded-l-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder={editingMessage ? "Edit your message..." : "Type your message here..."}
+                  value={inputMessage}
+                  onChange={(e) => setInputMessage(e.target.value)}
+                  onKeyPress={(e) => e.key === 'Enter' && (editingMessage ? handleSaveEdit() : sendMessage())}
+                />
+                <Button 
+                  className="ml-2 bg-blue-500 hover:bg-blue-600 text-white rounded-r-lg" 
+                  onClick={editingMessage ? handleSaveEdit : sendMessage}
+                >
+                  {editingMessage ? 'Save Edit' : 'Send'}
+                </Button>
+              </div>
             </div>
           </div>
         </>
+      )}
+
+      {viewerOpen && (
+        <ImageViewer
+          images={currentImages}
+          currentIndex={currentImageIndex}
+          onClose={closeImageViewer}
+          onNext={nextImage}
+          onPrev={prevImage}
+        />
       )}
     </div>
   );

@@ -15,7 +15,13 @@ export async function initOrbitDB() {
   }
 }
 
-export async function addMessage(chatId: string, message: { from: string; to: string; text: string; timestamp: number }) {
+export async function addMessage(chatId: string, message: { 
+  from: string; 
+  to: string; 
+  text: string; 
+  timestamp: number; 
+  imageUrls?: string[] 
+}) {
   try {
     const response = await axios.post(`${API_URL}/message`, { chatId, message });
     return response.data.hash;
@@ -155,6 +161,26 @@ export async function getUserContacts(userAddress: string) {
     return response.data;
   } catch (error) {
     console.error('Failed to get user contacts:', error);
+    throw error;
+  }
+}
+
+export async function resetUnreadCount(chatId: string, recipient: string) {
+  try {
+    const response = await axios.post(`${API_URL}/resetUnreadCount`, { chatId, recipient });
+    return response.data;
+  } catch (error) {
+    console.error('Failed to reset unread count:', error);
+    throw error;
+  }
+}
+
+export async function getNewMessages(userAddress: string) {
+  try {
+    const response = await axios.get(`${API_URL}/newMessages/${userAddress}`);
+    return response.data;
+  } catch (error) {
+    console.error('Failed to get new messages:', error);
     throw error;
   }
 }

@@ -41,7 +41,8 @@ export async function addMessage(chatId, message) {
     from: message.from,
     to: message.to,
     text: message.text,
-    timestamp: message.timestamp
+    timestamp: message.timestamp,
+    imageUrls: message.imageUrls // Add this line
   };
   const hash = await db.add(JSON.stringify(messageToSave));
   console.log('Message added with hash:', hash);
@@ -66,31 +67,12 @@ export async function getMessages(chatId) {
   const db = await getChatDB(chatId);
   const messages = await db.iterator({ limit: -1 }).collect();
   console.log('Raw messages from OrbitDB:', JSON.stringify(messages, null, 2));
-  const formattedMessages = messages
-    .filter(entry => entry.payload.value !== null) // Фильтруем удаленные сообщения
-    .map(entry => {
-      let parsedValue;
-      try {
-        parsedValue = JSON.parse(entry.payload.value);
-      } catch (error) {
-        console.error('Error parsing message:', error);
-        parsedValue = { text: 'Error parsing message', timestamp: 0 };
-      }
-      console.log('Parsed message:', JSON.stringify(parsedValue, null, 2));
-      return {
-        hash: entry.hash,
-        payload: {
-          value: {
-            from: parsedValue.from,
-            to: parsedValue.to,
-            text: parsedValue.text || '',
-            timestamp: parsedValue.timestamp || 0
-          }
-        }
-      };
-    });
-  console.log('Formatted messages:', JSON.stringify(formattedMessages, null, 2));
-  return formattedMessages;
+  return messages.map(message => ({
+    hash: message.hash,
+    payload: {
+      value: JSON.parse(message.payload.value)
+    }
+  }));
 }
 
 export async function editMessage(chatId, messageHash, newText) {
